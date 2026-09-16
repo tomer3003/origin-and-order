@@ -52,6 +52,103 @@ function h(tag, attrs, ...kids) {
 
 function byId(id) { return document.getElementById(id); }
 
+/* ---------------- Hover tooltips (requirements 7, 13) ----------------
+
+   One shared floating element, positioned next to whatever triggered it.
+   `pointer-events:none` in CSS means we only ever need to react to the
+   trigger's own mouseenter/mouseleave/focus/blur — never the popover's. */
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function popoverNode() {
+  let el = byId("popover");
+  if (!el) {
+    el = h("div", { id: "popover", class: "popover" });
+    el.hidden = true;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function showTooltip(anchor, html) {
+  const pop = popoverNode();
+  pop.innerHTML = html;
+  pop.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = (r.left + window.scrollX) + "px";
+  pop.style.top = (r.bottom + window.scrollY + 8) + "px";
+  requestAnimationFrame(() => {
+    const pr = pop.getBoundingClientRect();
+    const maxLeft = window.scrollX + document.documentElement.clientWidth - pr.width - 8;
+    let left = r.left + window.scrollX;
+    if (left > maxLeft) left = Math.max(8, maxLeft);
+    let top = r.bottom + window.scrollY + 8;
+    const maxTop = window.scrollY + document.documentElement.clientHeight - pr.height - 8;
+    if (top > maxTop) top = Math.max(8, r.top + window.scrollY - pr.height - 8);
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  });
+}
+
+function hideTooltip() {
+  const pop = byId("popover");
+  if (pop) pop.hidden = true;
+}
+
+/* Spread onto any h(...) attrs to make that element a hover/focus trigger.
+   `buildHtml` is called lazily, on first hover, not at render time. */
+function tooltipTrigger(buildHtml) {
+  return {
+    tabIndex: 0,
+    onmouseenter: (e) => showTooltip(e.currentTarget, buildHtml()),
+    onmouseleave: hideTooltip,
+    onfocus: (e) => showTooltip(e.currentTarget, buildHtml()),
+    onblur: hideTooltip
+  };
+}
+
+function popoverHtml({ name, meta, body, tldr }) {
+  return `<h5>${escapeHtml(name)}</h5>` +
+    (meta ? `<div class="pop-meta">${escapeHtml(meta)}</div>` : "") +
+    `<div class="pop-body">${escapeHtml(body)}</div>` +
+    (tldr ? `<div class="pop-tldr"><b>TL;DR</b><div>${escapeHtml(tldr)}</div></div>` : "");
+}
+
+/* A short, structured summary of what a feat actually grants, separate from
+   its prose description — the "roll type / effect" TL;DR the spell popover
+   will use the same pattern for once spells exist. */
+function featTLDR(feat) {
+  const bits = [];
+  if (feat.asi) {
+    bits.push("+2 to one ability score, or +1 to two different scores (max 20 each)");
+  } else if (feat.abilityChoice) {
+    const cap = feat.category === "boon" ? 30 : 20;
+    const which = feat.abilityChoice === "any"
+      ? "any one ability score"
+      : feat.abilityChoice.map((a) => ABIL_NAME[a]).join(" or ");
+    bits.push(`+1 to ${which} (max ${cap})`);
+  }
+  if (feat.tiesSaveProf) bits.push("saving throw proficiency in that same ability");
+  if (feat.skillChoiceFrom) bits.push(`proficiency in one of ${feat.skillChoiceFrom.map((s) => SKILLS[s].name).join(", ")}`);
+  if (feat.skillChoiceAny) bits.push(`proficiency in ${feat.skillChoiceAny} skill${feat.skillChoiceAny > 1 ? "s" : ""} of your choice`);
+  if (feat.expertiseChoiceAny) bits.push(`Expertise in ${feat.expertiseChoiceAny} skill you're already proficient in`);
+  if (feat.hpBonusPerLevel) bits.push(`Hit Point maximum scales with character level`);
+  if (feat.hpBonusFlat) bits.push(`+${feat.hpBonusFlat} Hit Point maximum`);
+  if (feat.repeatable) bits.push("can be taken more than once");
+  return bits.length ? bits.join("; ") + "." : "No ability score, skill, or resource choice attached.";
+}
+
+function featPopoverHtml(feat) {
+  const category = feat.category === "origin" ? "Origin Feat"
+    : feat.category === "boon" ? "Epic Boon Feat" : "General Feat";
+  const meta = [category, feat.prereq ? `Prereq: ${feat.prereq}` : null].filter(Boolean).join(" · ");
+  return popoverHtml({ name: feat.name, meta, body: feat.text, tldr: featTLDR(feat) });
+}
+
 /* ---------------- Redraw vs navigate ---------------- */
 
 /* Redraw in place. Never scrolls. Call this from every option handler.
@@ -551,10 +648,16 @@ function featureSummary(entry, cls) {
   return h("div", {},
     h("h4", { text: `${cls.name} features through level ${entry.levels}` }),
     h("ul", { class: "feat-list" },
-      group.rows.map((f) => h("li", {},
-        h("b", { text: `${f.name} (${f.level})${f.subclass ? " · " + f.subclass : ""}. ` }),
-        f.pending ? h("span", { class: "warn", text: f.text }) : f.text
-      ))
+      group.rows.map((f) => {
+        const label = `${f.name} (${f.level})${f.subclass ? " · " + f.subclass : ""}. `;
+        const feat = f.isFeat && f.featKey ? FEATS[f.featKey] : null;
+        return h("li", {},
+          feat
+            ? h("b", { class: "pop-trigger", text: label, ...tooltipTrigger(() => featPopoverHtml(feat)) })
+            : h("b", { text: label }),
+          f.pending ? h("span", { class: "warn", text: f.text }) : f.text
+        );
+      })
     )
   );
 }
@@ -1027,7 +1130,10 @@ function featSlotBlock(slot) {
     return h("fieldset", {},
       h("legend", { text: `${slot.label} · ${slot.source}` }),
       h("ul", { class: "feat-list" },
-        h("li", {}, h("b", { text: (f ? f.name : slot.fixedFeat) + ". " }), f ? f.text : "")),
+        h("li", {},
+          f ? h("b", { class: "pop-trigger", text: f.name + ". ", ...tooltipTrigger(() => featPopoverHtml(f)) })
+            : h("b", { text: slot.fixedFeat + ". " }),
+          f ? f.text : "")),
       h("div", { class: "hint", text: "Granted automatically by your background." })
     );
   }
@@ -1036,29 +1142,140 @@ function featSlotBlock(slot) {
   const options = R.featOptionsFor(state, slot);
   const chosen = pick.featKey ? FEATS[pick.featKey] : null;
 
+  const choose = (key) => {
+    state.featPicks[slot.id] = key
+      ? { featKey: key, abilityBumps: {}, skillPicks: [], expertisePicks: [] }
+      : {};
+    rerender();
+  };
+
   const block = h("fieldset", {},
     h("legend", { text: `${slot.label} · ${slot.source}${slot.charLevel ? ` · character level ${slot.charLevel}` : ""}` }),
-    h("select", {
-      "aria-label": `Feat for ${slot.label}`,
-      onchange: (e) => {
-        const key = e.target.value || null;
-        state.featPicks[slot.id] = key ? { featKey: key, abilityBumps: {} } : {};
-        rerender();
-      }
-    },
-      h("option", { value: "", selected: !pick.featKey }, "— choose a feat —"),
-      options.map((o) => h("option", {
-        value: o.key, selected: o.key === pick.featKey, disabled: o.disabled
-      }, o.disabled ? `${o.name} (${o.disabledReason})` : o.name))
+    h("div", { class: "hint", style: "margin-bottom:6px" }, "Hover or focus a feat to read it before choosing."),
+    h("div", { class: "chip-select" },
+      options.map((o) => h("button", {
+        class: `chip${o.key === pick.featKey ? " on" : ""}${o.disabled ? " disabled" : ""}`,
+        type: "button", disabled: o.disabled,
+        title: o.disabled ? o.disabledReason : null,
+        ...tooltipTrigger(() => featPopoverHtml(o)),
+        onclick: () => choose(o.key === pick.featKey ? null : o.key)
+      }, o.name))
     )
   );
 
   if (chosen) {
     block.appendChild(h("ul", { class: "feat-list", style: "margin-top:10px" },
-      h("li", {}, h("b", { text: chosen.name + ". " }), chosen.text)));
-    if (chosen.asi) block.appendChild(asiBumpPicker(slot, pick));
+      h("li", {},
+        h("b", { class: "pop-trigger", text: chosen.name + ". ", ...tooltipTrigger(() => featPopoverHtml(chosen)) }),
+        chosen.text)));
+    if (chosen.asi) {
+      block.appendChild(asiBumpPicker(slot, pick));
+    } else {
+      if (chosen.abilityChoice) block.appendChild(featAbilityChoicePicker(slot, pick, chosen));
+      if (chosen.skillChoiceFrom) block.appendChild(featSkillPicker(slot, pick, chosen.skillChoiceFrom, 1, "Choose a skill"));
+      if (chosen.skillChoiceAny) block.appendChild(featSkillPicker(slot, pick, ALL_SKILL_KEYS, chosen.skillChoiceAny, `Choose ${chosen.skillChoiceAny} skill${chosen.skillChoiceAny > 1 ? "s" : ""}`));
+      if (chosen.expertiseChoiceAny) block.appendChild(featExpertisePicker(slot, pick, chosen));
+    }
   }
   return block;
+}
+
+/* A single ability score to bump by 1 (every non-ASI feat with an
+   `abilityChoice` works this way — general feats cap at 20, boons at 30). */
+function featAbilityChoicePicker(slot, pick, feat) {
+  const bumps = pick.abilityBumps || {};
+  const chosenAbility = Object.keys(bumps).find((a) => bumps[a] > 0) || null;
+  const cap = feat.category === "boon" ? 30 : 20;
+  const eligible = feat.abilityChoice === "any" ? ABILS : feat.abilityChoice;
+  const scores = R.finalAbilities(state);
+
+  const update = (a) => {
+    const patch = { abilityBumps: a ? { [a]: 1 } : {} };
+    if (feat.tiesSaveProf) patch.saveProfAbility = a || null;
+    state.featPicks[slot.id] = { ...pick, ...patch };
+    rerender();
+  };
+
+  return h("div", { style: "margin-top:10px" },
+    h("div", { class: "chip-select" },
+      eligible.map((a) => {
+        const on = a === chosenAbility;
+        const without = scores[a] - (bumps[a] || 0);
+        const tooHigh = !on && without + 1 > cap;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${tooHigh ? " disabled" : ""}`,
+          type: "button", disabled: tooHigh,
+          title: tooHigh ? `Would exceed ${cap}` : null,
+          onclick: () => update(on ? null : a)
+        }, `${ABIL_ABBR[a]} ${scores[a]}`);
+      })
+    ),
+    h("div", { class: "hint", text: feat.tiesSaveProf
+      ? (chosenAbility ? `+1 ${ABIL_NAME[chosenAbility]}, and proficiency in ${ABIL_NAME[chosenAbility]} saving throws.` : "Pick the ability to raise — it also grants a saving throw proficiency in that ability.")
+      : (chosenAbility ? `+1 ${ABIL_NAME[chosenAbility]}.` : "Pick one score to raise by 1.") })
+  );
+}
+
+/* N skills from a given pool (a short fixed list for feats like Observant,
+   or the full list for Skilled / Skill Expert). Reuses the same "you already
+   have this elsewhere" dashed-outline convention as the class skill picker. */
+function featSkillPicker(slot, pick, pool, count, label) {
+  const chosen = (pick.skillPicks || []).filter(Boolean);
+  const already = R.proficientSkills(state);
+
+  const update = (next) => {
+    state.featPicks[slot.id] = { ...pick, skillPicks: next };
+    rerender();
+  };
+
+  return h("div", { style: "margin-top:10px" },
+    h("div", { class: "hint", text: label }),
+    h("div", { class: "chip-select" },
+      pool.map((sk) => {
+        const on = chosen.includes(sk);
+        const dupe = !on && already.has(sk);
+        const full = !on && chosen.length >= count;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+          type: "button", disabled: full,
+          title: dupe ? "You already have this from another source" : null,
+          onclick: () => update(on ? chosen.filter((s) => s !== sk) : [...chosen, sk])
+        }, SKILLS[sk].name);
+      })
+    ),
+    h("div", { class: "hint", text: `${chosen.length} of ${count} chosen.` })
+  );
+}
+
+/* Skill Expert's Expertise pick draws from whatever the character is
+   proficient in — including the skill this same feat just granted. */
+function featExpertisePicker(slot, pick, feat) {
+  const chosen = (pick.expertisePicks || []).filter(Boolean);
+  const eligible = [...R.proficientSkills(state)].sort((a, b) => SKILLS[a].name.localeCompare(SKILLS[b].name));
+  const want = feat.expertiseChoiceAny;
+
+  const update = (next) => {
+    state.featPicks[slot.id] = { ...pick, expertisePicks: next };
+    rerender();
+  };
+
+  return h("div", { style: "margin-top:10px" },
+    h("div", { class: "hint", text: `Choose ${want} skill${want > 1 ? "s" : ""} for Expertise` }),
+    eligible.length === 0
+      ? h("div", { class: "hint", text: "Pick this feat's new skill proficiency first, or have one from elsewhere." })
+      : h("div", { class: "chip-select" },
+          eligible.map((sk) => {
+            const on = chosen.includes(sk);
+            const full = !on && chosen.length >= want;
+            return h("button", {
+              class: `chip${on ? " on" : ""}${full ? " disabled" : ""}`,
+              type: "button", disabled: full,
+              onclick: () => update(on ? chosen.filter((s) => s !== sk) : [...chosen, sk])
+            }, SKILLS[sk].name);
+          })
+        ),
+    h("div", { class: "hint", text: `${chosen.length} of ${want} chosen.` })
+  );
 }
 
 /* The Ability Score Improvement feat: +2 to one score, or +1 to two.
@@ -1327,13 +1544,31 @@ function featureLines() {
       out.push(h("li", {}, h("b", { text: lin.name + ". " }), lin.text));
     }
   }
+  /* Class-level feats (ASI/Epic Boon slots) are already listed once per class
+     below, with their chosen ability/skill detail — track their keys so the
+     flat feat list underneath only adds background- and species-granted
+     feats, which featuresByClass never sees. */
+  const shownFeatKeys = new Set();
   R.featuresByClass(state).forEach((group) => {
-    group.rows.forEach((f) => out.push(h("li", {},
-      h("b", { text: `${f.name} (${group.className} ${f.level}). ` }), f.text)));
+    group.rows.forEach((f) => {
+      const label = `${f.name} (${group.className} ${f.level}). `;
+      const feat = f.isFeat && f.featKey ? FEATS[f.featKey] : null;
+      if (feat) shownFeatKeys.add(f.featKey);
+      const nameEl = feat
+        ? h("b", { class: "pop-trigger", text: label, ...tooltipTrigger(() => featPopoverHtml(feat)) })
+        : h("b", { text: label });
+      out.push(h("li", {}, nameEl, f.text));
+    });
   });
-  R.ownedFeatKeys(state).forEach((k) => {
-    const f = FEATS[k];
-    if (f) out.push(h("li", {}, h("b", { text: f.name + " (feat). " }), f.text));
+  R.featSlots(state).forEach((slot) => {
+    if (slot.classIndex != null) return; // already covered above
+    const k = slot.fixedFeat || (state.featPicks[slot.id] || {}).featKey;
+    const f = k && FEATS[k];
+    if (!f || shownFeatKeys.has(k)) return;
+    shownFeatKeys.add(k);
+    out.push(h("li", {},
+      h("b", { class: "pop-trigger", text: f.name + " (feat). ", ...tooltipTrigger(() => featPopoverHtml(f)) }),
+      f.text));
   });
   if (!out.length) out.push(h("li", { class: "empty-note", text: "Nothing yet." }));
   return out;

@@ -6,17 +6,26 @@ to GitHub Pages from `master` root: https://tomer3003.github.io/origin-and-order
 **Read this file first when resuming work.** It records what is done, what is
 partial, and what is next, so a cold start needs no re-derivation.
 
+## Working style
+
+The user has asked that this work happen in the local interactive session,
+not by spawning a remote/background agent — do the work directly rather than
+delegating it. Still commit and push frequently regardless of who's doing the
+work; that habit is what made the earlier remote-agent interruption a
+non-event instead of a setback.
+
 ---
 
 ## Local testing note
 
 This machine has **no node and no working python** (the `python` on PATH is
 the Microsoft Store stub). ES modules can't load over `file://`, so to see
-the app locally you need a server. There's a small PowerShell
-`HttpListener` static server kept in the scratchpad (`serve.ps1`) that works:
-`powershell -NoProfile -File serve.ps1` serves the repo on
-`http://localhost:8123/`. The deployed site needs no server at all — this is
-purely a local-testing workaround.
+the app locally you need a server. `tools/serve.ps1` in this repo is a small
+PowerShell `HttpListener` static server that works from any clone:
+`powershell -NoProfile -File tools/serve.ps1` serves the repo on
+`http://localhost:8123/` (or use the Claude Code preview tool with the
+`.claude/launch.json` already checked in). The deployed site needs no server
+at all — this is purely a local-testing workaround.
 
 ## Deployment / architecture facts
 
@@ -173,11 +182,66 @@ and the layout has no horizontal overflow at 375 px.
 7. ~~Feats at ASI levels plus retroactively owed feats.~~ Done, with
    prerequisites enforced and an inline +2/+1 picker for the ASI feat.
 
+### Done — feat choices, feat/tooltip system, and 5 more species
+(Landed directly by the user's own session, not a background agent — see
+the note at the top of this file about working style going forward.)
+
+- **Feats now actually let you pick what they grant.** Every general/boon
+  feat with a baked-in "+1 X or Y (max N)" clause has an `abilityChoice` field
+  in `feats.js` (an array of eligible abilities, or the string `"any"`), and
+  `featAbilityChoicePicker` in `app.js` renders a one-click chip picker for it
+  — this is the same UI pattern as the ASI feat's own picker, just simpler
+  (always +1, never a 2-mode split). `Resilient` additionally sets
+  `tiesSaveProf: true`, which ties the chosen ability to a save proficiency
+  via `pick.saveProfAbility` (consumed in `saveProficiencies()`).
+  `Skilled`/`Observant`/`Skill Expert` use `skillChoiceAny` /
+  `skillChoiceFrom` / `expertiseChoiceAny` the same way, writing into
+  `pick.skillPicks` / `pick.expertisePicks`, consumed by `proficientSkills()`
+  / `expertiseSkills()`. `Skill Expert`'s Expertise picker reads
+  `proficientSkills(state)` live, so a skill the same feat just granted shows
+  up as an Expertise option immediately — verified in a real browser.
+  `pendingFeatSlots()` (renamed logic now lives in `featPickIncomplete()`)
+  was also broken before this: it only checked completion for the literal
+  ASI feat, so e.g. picking "Athlete" and never choosing Str-or-Dex counted
+  as a finished feat slot. Fixed for every choice type above.
+- **Hover/focus tooltips exist now** (requirements 7 and 13), starting with
+  feats — the CSS for this (`.popover`, `.pop-trigger`, `.pop-tldr` etc.) was
+  already sitting unused in `style.css` from an earlier pass; the JS side
+  (`showTooltip`/`hideTooltip`/`tooltipTrigger`/`popoverHtml` in `app.js`) was
+  missing and is now written. The feat *picker* itself changed from a plain
+  `<select>` to a chip grid for this reason — you can't attach a rich hover
+  tooltip to a native `<option>`. Every place a feat name appears (the
+  picker, the chosen-feat summary, the per-class feature list, the flat
+  feat list, the sidebar) now triggers the same tooltip. `featTLDR()`
+  generates the structured "what you actually get" line from the feat's
+  choice metadata rather than repeating its prose. **Spells will reuse this
+  exact popover component** once Phase B starts — same `popoverHtml()` call,
+  different content builder.
+- Fixed a real duplicate-listing bug found while testing the above: a
+  class-level feat (e.g. Athlete at a Fighter ASI level) was appearing twice
+  in the sheet's Features & Traits list — once via `featuresByClass` (with
+  its chosen-ability detail) and again via the flat `ownedFeatKeys` fallback
+  (without it). The flat list now only adds background/species feats that
+  `featuresByClass` never covers.
+- **5 more species**: Aasimar, Gnome, Goliath, Orc, Tiefling, bringing the
+  total to all 10 from the 2024 PHB. Gnome and Tiefling use the same
+  `lineageChoice` pattern as Elf/Dragonborn (Gnomish Lineage, Fiendish
+  Legacy); Goliath's Giant Ancestry is a 6-option version of the same thing.
+  Orc has no lineage choice, matching the book. Goliath is 35 ft. Speed, not
+  30 — checked in the browser that this actually flows through to the sheet.
+  Aasimar and Tiefling can pick Medium or Small in the book; this builder
+  doesn't have a size-choice mechanism yet (Human has the same gap already),
+  so both are fixed at Medium for now — noted here rather than silently
+  guessed past.
+- Added `tools/serve.ps1` (repo-relative copy of the scratchpad script) and
+  `.claude/launch.json` so local testing works from a fresh clone without
+  hunting for the script — this machine still has no working node/python.
+
 ### Next — Phase B: spells
-Spell database with per-class list filtering (requirement 16), the
-level-by-level picking walkthrough (requirement 9), and the hover popover
-showing full rules text + a mechanical TL;DR (requirement 7). Same popover
-component is reused for feats (requirement 13).
+Spell database with per-class list filtering (requirement 16), and the
+level-by-level picking walkthrough (requirement 9). The hover popover
+component itself is DONE (see above) — Phase B just needs to call
+`popoverHtml()` with spell content instead of feat content.
 
 ### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import

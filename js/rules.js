@@ -277,6 +277,9 @@ export function proficientSkills(state) {
   if (bg) bg.skills.forEach((s) => set.add(s));
   (state.speciesSkills || []).filter(Boolean).forEach((s) => set.add(s));
   (state.featSkills || []).filter(Boolean).forEach((s) => set.add(s));
+  Object.values(state.featPicks || {}).forEach((pick) => {
+    (pick && pick.skillPicks || []).filter(Boolean).forEach((s) => set.add(s));
+  });
   return set;
 }
 
@@ -284,6 +287,9 @@ export function expertiseSkills(state) {
   const set = new Set();
   classEntries(state).forEach((c) => (c.expertise || []).forEach((s) => set.add(s)));
   (state.featExpertise || []).forEach((s) => set.add(s));
+  Object.values(state.featPicks || {}).forEach((pick) => {
+    (pick && pick.expertisePicks || []).filter(Boolean).forEach((s) => set.add(s));
+  });
   return set;
 }
 
@@ -298,9 +304,15 @@ export function expertiseOwed(entry) {
 
 export function saveProficiencies(state) {
   /* Only the FIRST class grants saving throw proficiencies; multiclassing
-     never adds more (2024 rules). */
+     never adds more (2024 rules). The Resilient feat is the one thing that
+     adds a save proficiency outside class, tied to whichever ability score
+     that feat's picker raised. */
   const first = classEntries(state)[0];
-  return new Set(first ? CLASSES[first.key].saves : []);
+  const set = new Set(first ? CLASSES[first.key].saves : []);
+  Object.values(state.featPicks || {}).forEach((pick) => {
+    if (pick && pick.saveProfAbility) set.add(pick.saveProfAbility);
+  });
+  return set;
 }
 
 export function skillModifier(state, skillKey) {
@@ -526,21 +538,41 @@ function charLevelOf(log, classIndex, classLevel) {
   return hit ? hit.charLevel : null;
 }
 
+/* True if a feat has been picked but its sub-choices (which ability score,
+   which skill, which skill gets Expertise...) aren't finished yet. Picking
+   "Athlete" from the dropdown isn't enough on its own — the player still
+   owes a choice of Strength or Dexterity. */
+export function featPickIncomplete(feat, pick) {
+  if (!feat) return false;
+  if (feat.asi) {
+    const bumps = pick.abilityBumps || {};
+    const total = Object.values(bumps).reduce((n, v) => n + (Number(v) || 0), 0);
+    return total !== 2;
+  }
+  if (feat.abilityChoice) {
+    const bumps = pick.abilityBumps || {};
+    const total = Object.values(bumps).reduce((n, v) => n + (Number(v) || 0), 0);
+    if (total !== 1) return true;
+  }
+  if (feat.skillChoiceFrom) {
+    if ((pick.skillPicks || []).filter(Boolean).length !== 1) return true;
+  }
+  if (feat.skillChoiceAny) {
+    if ((pick.skillPicks || []).filter(Boolean).length !== feat.skillChoiceAny) return true;
+  }
+  if (feat.expertiseChoiceAny) {
+    if ((pick.expertisePicks || []).filter(Boolean).length !== feat.expertiseChoiceAny) return true;
+  }
+  return false;
+}
+
 export function pendingFeatSlots(state) {
   const picks = state.featPicks || {};
   return featSlots(state).filter((slot) => {
     if (slot.fixedFeat) return false;
     const pick = picks[slot.id];
     if (!pick || !pick.featKey) return true;
-    /* The Ability Score Improvement feat isn't finished until the actual
-       score bumps have been chosen. */
-    const feat = FEATS[pick.featKey];
-    if (feat && feat.asi) {
-      const bumps = pick.abilityBumps || {};
-      const total = Object.values(bumps).reduce((n, v) => n + (Number(v) || 0), 0);
-      return total !== 2;
-    }
-    return false;
+    return featPickIncomplete(FEATS[pick.featKey], pick);
   });
 }
 
@@ -622,12 +654,31 @@ function featOrStub(state, classIndex, classLevel, stub) {
       return {
         name: f.name,
         text: bumps.length ? bumps.join(", ") + "." : f.text,
-        isFeat: true
+        isFeat: true, featKey: pick.featKey
       };
     }
-    return { name: f.name, text: f.text, isFeat: true };
+    return { name: f.name, text: describeFeatChoice(f, pick), isFeat: true, featKey: pick.featKey };
   }
   return { ...stub, pending: true };
+}
+
+/* Appends what the player actually picked (ability, skill, Expertise) after
+   a feat's base text, for feats that have a choice built into them. */
+export function describeFeatChoice(f, pick) {
+  const bits = [];
+  if (f.abilityChoice) {
+    const a = Object.keys(pick.abilityBumps || {}).find((k) => pick.abilityBumps[k] > 0);
+    if (a) bits.push(`+1 ${ABIL_NAME[a]}`);
+  }
+  if (f.skillChoiceFrom || f.skillChoiceAny) {
+    const picks = (pick.skillPicks || []).filter(Boolean);
+    if (picks.length) bits.push("proficiency: " + picks.map((s) => SKILLS[s] ? SKILLS[s].name : s).join(", "));
+  }
+  if (f.expertiseChoiceAny) {
+    const picks = (pick.expertisePicks || []).filter(Boolean);
+    if (picks.length) bits.push("Expertise: " + picks.map((s) => SKILLS[s] ? SKILLS[s].name : s).join(", "));
+  }
+  return bits.length ? `${f.text} (${bits.join("; ")}.)` : f.text;
 }
 
 /* Per-level counters (Rages, Focus Points, Superiority Dice, …). */
