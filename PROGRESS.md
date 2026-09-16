@@ -68,18 +68,34 @@ Three distinct behaviours, driven by `caster.prepMode` in the class data:
 ## STATUS
 
 ### Done
-- Nothing landed yet beyond this log and the seeded level-1 `index.html`.
+- `css/style.css` extracted from the old single-file `index.html`.
+- `js/data/core.js` — abilities, skills, alignments, armour, all four spell
+  slot tables, Fighting Styles, and the ASI/Epic Boon feature stubs.
+- **All 12 classes** are split into `js/data/classes/<class>.js`, collected by
+  `js/data/classes/index.js` (which also carries the multiclass caster-level
+  weights and the two third-caster subclass keys). Each class carries: core
+  traits, equipment options, caster block, ASI/Epic Boon levels, per-level
+  `tracks`, level-gated `choices`, full 1-20 `features`, and all four PHB
+  subclasses with their own features and always-prepared spell lists.
+- Every class table verified **line by line against the user's own PHB**, not
+  the SRD mirror. See "Corrections to the SRD mirror" below — the mirror had
+  four real errors.
 
 ### In progress
-- Phase A (see below).
+- Phase A step 2 onward (see below). `index.html` is still the old
+  single-file level-1-only build and is deliberately left working while the
+  modular app is assembled beside it.
 
 ### Next — Phase A: breadth first
 Per the user's explicit priority: get all 12 classes + multiclassing +
 levels 1-20 mechanically solid and pickable EARLY, even while spell lists,
 equipment and subclass feature text are still thin. Depth comes after.
 
-1. Split the single `index.html` into modules (`css/style.css`,
-   `js/data/*.js`, `js/rules.js`, `js/state.js`, `js/app.js`).
+1. ~~Split the single `index.html` into modules.~~ Data layer done
+   (`css/style.css`, `js/data/core.js`, `js/data/classes/*`). Still to
+   extract from the old `index.html`: species, backgrounds and feats into
+   `js/data/`, then build `js/rules.js`, `js/state.js`, `js/app.js` and the
+   new `index.html`.
 2. Fix the scroll-jump bug (requirement 14): split `renderAll()` into
    `rerender()` (no scroll) and `goToStep()` (scrolls). Every option-click
    handler calls `rerender()`; only Back/Continue and the step-tracker
@@ -113,11 +129,42 @@ equipment tables, more species. Class by class.
 
 ---
 
+## Corrections to the SRD mirror (found by checking the PHB directly)
+
+`srd-2024-class-tables.md` in the scratchpad is a useful index but its
+transcription is **not trustworthy for numbers**. Confirmed errors:
+
+- **Warlock** invocations known, Pact slot count, and slot level were all
+  wrong. Correct, from the PHB Warlock Features table:
+  invocations `1,3,3,3,5,5,6,6,7,7,7,8,8,8,9,9,9,10,10,10`;
+  slots `1,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,4,4,4,4`;
+  slot level `1,1,2,2,3,3,4,4,5,5,5,5,5,5,5,5,5,5,5,5`.
+  (`core.js` PACT_MAGIC was already right.)
+- **Warlock** prepared spells is
+  `2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15`.
+- **Sorcerer** prepared spells starts at **2**, not 4, and climbs in twos
+  early: `2,4,6,7,9,10,...`. Its Spellcasting text says "choose two level 1
+  Sorcerer spells", confirming it.
+- **Wizard** prepared spells ends at **25**, not 26, and leaves the shared
+  full-caster curve from level 13: `...,16,16,17,18,19,21,22,23,24,25`.
+- **Rogue** level 19 is Epic Boon, not an ASI. Rogue ASIs are 4/8/10/12/16.
+
+When adding any future table data, read the PHB chapter text in
+`phb-classes/*.txt` rather than the mirror summary. Note that the PDF-to-text
+conversion column-shifts the *feature* column against the *level* column in
+most tables — the `Level N:` headings later in each chapter are the reliable
+source for which level a feature lands on, while the numeric columns read
+cleanly in top-to-bottom order.
+
+## Settled former open questions
+
+- Bard prepared-spell counts at levels 17-20 are **19/20/21/22**, exactly as
+  previously guessed from the full-caster pattern. Confirmed against the PHB.
+- Ranger level 1 has **2** spell slots, confirmed against the PHB Ranger
+  Features table. The SRD mirror's "1" was wrong.
+
 ## Open questions for the user (non-blocking; noted rather than asked)
 
 - Cross-device sync is gone with the move off Claude hosting. Saved characters
   are per-browser `localStorage` only. If they want real sync later that needs a
   backend (Supabase/Firebase) — out of scope unless asked.
-- Two SRD-mirror numbers were ambiguous and are currently taken from the
-  standard full-caster pattern rather than a direct read: Bard prepared-spell
-  counts at levels 17-20. Worth a PHB eyeball since the user owns the book.
