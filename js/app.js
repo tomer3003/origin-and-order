@@ -137,10 +137,13 @@ function featTLDR(feat) {
   if (feat.skillChoiceFrom) bits.push(`proficiency in one of ${feat.skillChoiceFrom.map((s) => SKILLS[s].name).join(", ")}`);
   if (feat.skillChoiceAny) bits.push(`proficiency in ${feat.skillChoiceAny} skill${feat.skillChoiceAny > 1 ? "s" : ""} of your choice`);
   if (feat.expertiseChoiceAny) bits.push(`Expertise in ${feat.expertiseChoiceAny} skill you're already proficient in`);
-  if (feat.hpBonusPerLevel) bits.push(`Hit Point maximum scales with character level`);
-  if (feat.hpBonusFlat) bits.push(`+${feat.hpBonusFlat} Hit Point maximum`);
+  if (feat.hpBonusPerLevel) bits.push(`Hit Point maximum +${feat.hpBonusPerLevel * 2} the level you take this, then +${feat.hpBonusPerLevel} every level after`);
+  if (feat.hpBonusFlat) bits.push(`+${feat.hpBonusFlat} Hit Point maximum (fixed, doesn't grow with level)`);
   if (feat.repeatable) bits.push("can be taken more than once");
-  return bits.length ? bits.join("; ") + "." : "No ability score, skill, or resource choice attached.";
+  if (/Proficiency Bonus/.test(feat.text)) {
+    bits.push("scales with your Proficiency Bonus, which rises at character levels 5, 9, 13, and 17");
+  }
+  return bits.length ? bits.join("; ") + "." : "No ability score, skill, or resource choice attached; doesn't change with level.";
 }
 
 function featPopoverHtml(feat) {
@@ -161,7 +164,19 @@ function spellTLDR(spell) {
   if (spell.damage) bits.push(spell.damage);
   if (spell.effect) bits.push(spell.effect);
   if (spell.concentration) bits.push("requires Concentration");
-  return bits.map((b) => b.replace(/\.$/, "")).join(" — ") + ".";
+  bits.push(spellScalingNote(spell));
+  return bits.filter(Boolean).map((b) => b.replace(/\.$/, "")).join(" — ") + ".";
+}
+
+/* How this spell changes with a higher character level (cantrips) or a
+   higher-level slot (level 1+) — always stated explicitly, never left
+   implicit, including saying so when a spell simply doesn't scale. */
+function spellScalingNote(spell) {
+  if (spell.level === 0) {
+    if (spell.noCantripScale || !spell.damage) return null;
+    return spell.cantripScaleNote || "Damage gains one die at character levels 5, 11, and 17 (2 dice at 5th, 3 at 11th, 4 at 17th)";
+  }
+  return spell.scaling || "No change when cast with a higher-level slot beyond what the slot itself allows";
 }
 
 function spellMetaLine(spell) {

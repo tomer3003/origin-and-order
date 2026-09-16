@@ -17,9 +17,17 @@
      "attack"   — a spell attack roll (ranged or melee)
      "save"     — the target makes a saving throw against your spell DC
      "none"     — no attack roll or save (utility, buff, summon, etc.)
-   `saveAbility` only applies when roll === "save". `damage` is a short
-   string like "1d10 Fire" or null. `effect` is any other notable mechanical
-   effect worth calling out, kept separate from the damage line. */
+   `saveAbility` only applies when roll === "save". `damage` is the BASE
+   damage only now (e.g. "1d10 Fire") — no vague "(scales with level)"
+   qualifier baked into the string; `effect` is any other notable mechanical
+   effect, kept separate from the damage line.
+
+   `scaling` spells out exactly how a level-1+ spell changes when cast with
+   a higher-level slot (e.g. "+1d6 per slot level above 1st"); omit it only
+   for spells that genuinely don't upcast into anything beyond flavor.
+   Cantrips (level 0) don't need it — every damage cantrip follows the same
+   universal rule (extra die at character levels 5/11/17), which spellTLDR
+   adds automatically rather than repeating on 25 separate entries. */
 
 export const SPELLS = {
   /* ---------------- Cantrips ---------------- */
@@ -27,13 +35,13 @@ export const SPELLS = {
     name: "Acid Splash", level: 0, school: "Conjuration", classes: ["sorcerer", "wizard"],
     time: "Action", range: "60 ft.", components: "V, S", duration: "Instantaneous",
     text: "Hurl a bubble of acid at one or two creatures within 5 ft. of each other.",
-    roll: "save", saveAbility: "dex", damage: "1d6 Acid (scales with level)", effect: null
+    roll: "save", saveAbility: "dex", damage: "1d6 Acid", effect: null
   },
   chillTouch: {
     name: "Chill Touch", level: 0, school: "Necromancy", classes: ["sorcerer", "warlock", "wizard"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "1 round",
     text: "A ghostly skeletal hand strikes a creature and clings to it.",
-    roll: "attack", saveAbility: null, damage: "1d8 Necrotic (scales with level)", effect: "Target can't regain HP until the start of your next turn; against Undead, also Disadvantage on attacks against you."
+    roll: "attack", saveAbility: null, damage: "1d8 Necrotic", effect: "Target can't regain HP until the start of your next turn; against Undead, also Disadvantage on attacks against you."
   },
   controlFlames: {
     name: "Control Flames", level: 0, school: "Transmutation", classes: ["druid", "sorcerer", "wizard"],
@@ -45,7 +53,7 @@ export const SPELLS = {
     name: "Create Bonfire", level: 0, school: "Conjuration", classes: ["druid", "sorcerer", "warlock", "wizard"],
     time: "Action", range: "60 ft.", components: "V, S", duration: "Concentration, 1 minute",
     text: "Summon a fire in a 5-ft. cube that burns anything standing in it.",
-    roll: "save", saveAbility: "dex", damage: "1d8 Fire (scales with level)", effect: "Damage repeats each turn a creature ends its turn in the fire."
+    roll: "save", saveAbility: "dex", damage: "1d8 Fire", effect: "Damage repeats each turn a creature ends its turn in the fire."
   },
   dancingLights: {
     name: "Dancing Lights", level: 0, school: "Illusion", classes: ["bard", "sorcerer", "wizard"],
@@ -63,13 +71,14 @@ export const SPELLS = {
     name: "Eldritch Blast", level: 0, school: "Evocation", classes: ["warlock"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "Instantaneous",
     text: "A beam of crackling energy strikes one creature; at higher levels you fire more beams, each targetable separately.",
-    roll: "attack", saveAbility: null, damage: "1d10 Force per beam (more beams at levels 5/11/17)", effect: null
+    roll: "attack", saveAbility: null, damage: "1d10 Force per beam", effect: null,
+    cantripScaleNote: "One more beam at character levels 5, 11, and 17 (up to 4 total), each aimable at a different target — not a bigger die like other cantrips."
   },
   fireBolt: {
     name: "Fire Bolt", level: 0, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "Instantaneous",
     text: "Hurl a mote of fire at a creature or object.",
-    roll: "attack", saveAbility: null, damage: "1d10 Fire (scales with level)", effect: "Can ignite flammable objects that aren't worn or carried."
+    roll: "attack", saveAbility: null, damage: "1d10 Fire", effect: "Can ignite flammable objects that aren't worn or carried."
   },
   friends: {
     name: "Friends", level: 0, school: "Enchantment", classes: ["bard", "sorcerer", "wizard"],
@@ -81,7 +90,7 @@ export const SPELLS = {
     name: "Frostbite", level: 0, school: "Evocation", classes: ["druid", "sorcerer", "warlock", "wizard"],
     time: "Action", range: "60 ft.", components: "V, S", duration: "Instantaneous",
     text: "Numbing frost sears a creature.",
-    roll: "save", saveAbility: "con", damage: "1d6 Cold (scales with level)", effect: "On a failed save, the target also has Disadvantage on its next attack roll before your next turn."
+    roll: "save", saveAbility: "con", damage: "1d6 Cold", effect: "On a failed save, the target also has Disadvantage on its next attack roll before your next turn."
   },
   guidance: {
     name: "Guidance", level: 0, school: "Divination", classes: ["cleric", "druid"],
@@ -123,7 +132,7 @@ export const SPELLS = {
     name: "Mind Sliver", level: 0, school: "Enchantment", classes: ["bard", "sorcerer", "wizard"],
     time: "Action", range: "60 ft.", components: "V", duration: "Instantaneous",
     text: "A sliver of psychic energy cuts into a creature's mind.",
-    roll: "save", saveAbility: "int", damage: "1d6 Psychic (scales with level)", effect: "On a failed save, the target subtracts 1d4 from its next saving throw before the end of your next turn."
+    roll: "save", saveAbility: "int", damage: "1d6 Psychic", effect: "On a failed save, the target subtracts 1d4 from its next saving throw before the end of your next turn."
   },
   minorIllusion: {
     name: "Minor Illusion", level: 0, school: "Illusion", classes: ["bard", "sorcerer", "warlock", "wizard"],
@@ -135,7 +144,7 @@ export const SPELLS = {
     name: "Poison Spray", level: 0, school: "Conjuration", classes: ["druid", "sorcerer", "warlock", "wizard"],
     time: "Action", range: "10 ft.", components: "V, S", duration: "Instantaneous",
     text: "Project a puff of noxious gas at a creature.",
-    roll: "save", saveAbility: "con", damage: "1d12 Poison (scales with level)", effect: null
+    roll: "save", saveAbility: "con", damage: "1d12 Poison", effect: null
   },
   prestidigitation: {
     name: "Prestidigitation", level: 0, school: "Transmutation", classes: ["bard", "sorcerer", "warlock", "wizard"],
@@ -147,31 +156,32 @@ export const SPELLS = {
     name: "Produce Flame", level: 0, school: "Conjuration", classes: ["druid"],
     time: "Action", range: "Self", components: "V, S", duration: "10 minutes",
     text: "A flame flickers in your hand, usable as a light source or thrown at a creature within 30 ft.",
-    roll: "attack", saveAbility: null, damage: "1d8 Fire (scales with level)", effect: "Also works as a torch-equivalent light source until thrown or dismissed."
+    roll: "attack", saveAbility: null, damage: "1d8 Fire", effect: "Also works as a torch-equivalent light source until thrown or dismissed."
   },
   rayOfFrost: {
     name: "Ray of Frost", level: 0, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "60 ft.", components: "V, S", duration: "Instantaneous",
     text: "A frigid beam of blue-white light streaks toward a creature.",
-    roll: "attack", saveAbility: null, damage: "1d8 Cold (scales with level)", effect: "On a hit, target's Speed is reduced by 10 ft. until the start of your next turn."
+    roll: "attack", saveAbility: null, damage: "1d8 Cold", effect: "On a hit, target's Speed is reduced by 10 ft. until the start of your next turn."
   },
   sacredFlame: {
     name: "Sacred Flame", level: 0, school: "Evocation", classes: ["cleric"],
     time: "Action", range: "60 ft.", components: "V, S", duration: "Instantaneous",
     text: "Flame-like radiance descends on a creature.",
-    roll: "save", saveAbility: "dex", damage: "1d8 Radiant (scales with level)", effect: "Target gains no benefit from Half or Three-Quarters Cover for this save."
+    roll: "save", saveAbility: "dex", damage: "1d8 Radiant", effect: "Target gains no benefit from Half or Three-Quarters Cover for this save."
   },
   shillelagh: {
     name: "Shillelagh", level: 0, school: "Transmutation", classes: ["druid"],
     time: "Bonus Action", range: "Touch", components: "V, S, M", duration: "1 minute",
     text: "Imbue a club or quarterstaff with nature's power; use Wisdom for its attack and damage rolls.",
-    roll: "none", saveAbility: null, damage: "1d8 (weapon die), Wisdom-based", effect: "Also counts as magical for overcoming resistance."
+    roll: "none", saveAbility: null, damage: "1d8 (weapon die), Wisdom-based", effect: "Also counts as magical for overcoming resistance.",
+    noCantripScale: true
   },
   shockingGrasp: {
     name: "Shocking Grasp", level: 0, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "Touch", components: "V, S", duration: "Instantaneous",
     text: "Lightning springs from your hand into a creature you touch, with Advantage if it's wearing metal armor.",
-    roll: "attack", saveAbility: null, damage: "1d8 Lightning (scales with level)", effect: "Target can't take Reactions until the start of its next turn."
+    roll: "attack", saveAbility: null, damage: "1d8 Lightning", effect: "Target can't take Reactions until the start of its next turn."
   },
   spareTheDying: {
     name: "Spare the Dying", level: 0, school: "Necromancy", classes: ["cleric"],
@@ -189,31 +199,32 @@ export const SPELLS = {
     name: "Thorn Whip", level: 0, school: "Transmutation", classes: ["druid"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "Instantaneous",
     text: "A vine-like whip of thorns lashes a creature and hauls it toward you.",
-    roll: "attack", saveAbility: null, damage: "1d6 Piercing (scales with level)", effect: "On a hit, pull the target up to 10 ft. closer to you."
+    roll: "attack", saveAbility: null, damage: "1d6 Piercing", effect: "On a hit, pull the target up to 10 ft. closer to you."
   },
   thunderclap: {
     name: "Thunderclap", level: 0, school: "Evocation", classes: ["bard", "druid", "sorcerer", "warlock", "wizard"],
     time: "Action", range: "Self (5 ft.)", components: "S", duration: "Instantaneous",
     text: "A burst of thunderous force erupts from your hand.",
-    roll: "save", saveAbility: "con", damage: "1d6 Thunder (scales with level)", effect: "Affects every creature in a 5-ft. radius around you."
+    roll: "save", saveAbility: "con", damage: "1d6 Thunder", effect: "Affects every creature in a 5-ft. radius around you."
   },
   trueStrike: {
     name: "True Strike", level: 0, school: "Divination", classes: ["bard", "sorcerer", "warlock", "wizard"],
     time: "Action", range: "Self", components: "S", duration: "Instantaneous",
     text: "Channel magic through a weapon strike to guide your aim.",
-    roll: "attack", saveAbility: null, damage: "Your weapon's normal damage (this spell just grants the attack)", effect: "Make one weapon attack, using your spellcasting ability for the attack roll instead of Strength/Dexterity."
+    roll: "attack", saveAbility: null, damage: "Your weapon's normal damage (this spell just grants the attack)", effect: "Make one weapon attack, using your spellcasting ability for the attack roll instead of Strength/Dexterity.",
+    noCantripScale: true
   },
   viciousMockery: {
     name: "Vicious Mockery", level: 0, school: "Enchantment", classes: ["bard"],
     time: "Action", range: "60 ft.", components: "V", duration: "Instantaneous",
     text: "Unleash a string of withering insults laced with subtle magic.",
-    roll: "save", saveAbility: "wis", damage: "1d6 Psychic (scales with level)", effect: "On a failed save, the target also has Disadvantage on its next attack roll before your next turn."
+    roll: "save", saveAbility: "wis", damage: "1d6 Psychic", effect: "On a failed save, the target also has Disadvantage on its next attack roll before your next turn."
   },
   wordOfRadiance: {
     name: "Word of Radiance", level: 0, school: "Evocation", classes: ["cleric"],
     time: "Action", range: "Self (5 ft.)", components: "V, M", duration: "Instantaneous",
     text: "Radiant power bursts outward, searing nearby foes.",
-    roll: "save", saveAbility: "con", damage: "1d6 Radiant (scales with level)", effect: "Affects every creature of your choice in a 5-ft. radius around you."
+    roll: "save", saveAbility: "con", damage: "1d6 Radiant", effect: "Affects every creature of your choice in a 5-ft. radius around you."
   },
 
   /* ---------------- Level 1 ---------------- */
@@ -227,25 +238,29 @@ export const SPELLS = {
     name: "Animal Friendship", level: 1, school: "Enchantment", classes: ["bard", "druid", "ranger"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "24 hours",
     text: "Convince a beast that you mean it no harm.",
-    roll: "save", saveAbility: "wis", damage: null, effect: "On a failed save the beast is Charmed for the duration (broken early if you or a companion harm it)."
+    roll: "save", saveAbility: "wis", damage: null, effect: "On a failed save the beast is Charmed for the duration (broken early if you or a companion harm it).",
+    scaling: "+1 target beast per slot level above 1st."
   },
   bane: {
     name: "Bane", level: 1, school: "Enchantment", classes: ["bard", "cleric"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "Concentration, 1 minute",
     text: "Up to three creatures are wracked with self-doubt.",
-    roll: "save", saveAbility: "cha", damage: null, effect: "On a failed save, subtract 1d4 from attack rolls and saving throws for the duration."
+    roll: "save", saveAbility: "cha", damage: null, effect: "On a failed save, subtract 1d4 from attack rolls and saving throws for the duration.",
+    scaling: "+1 target per slot level above 1st."
   },
   bless: {
     name: "Bless", level: 1, school: "Enchantment", classes: ["cleric", "paladin"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "Concentration, 1 minute",
     text: "Bless up to three creatures of your choice.",
-    roll: "none", saveAbility: null, damage: null, effect: "Each target adds 1d4 to attack rolls and saving throws for the duration."
+    roll: "none", saveAbility: null, damage: null, effect: "Each target adds 1d4 to attack rolls and saving throws for the duration.",
+    scaling: "+1 target per slot level above 1st."
   },
   burningHands: {
     name: "Burning Hands", level: 1, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "Self (15-ft. cone)", components: "V, S", duration: "Instantaneous",
     text: "A thin sheet of flame shoots from your fingertips.",
-    roll: "save", saveAbility: "dex", damage: "3d6 Fire (scales with slot level)", effect: "Half damage on a successful save; can ignite flammable objects in the area."
+    roll: "save", saveAbility: "dex", damage: "3d6 Fire", effect: "Half damage on a successful save; can ignite flammable objects in the area.",
+    scaling: "+1d6 per slot level above 1st."
   },
   charmPerson: {
     name: "Charm Person", level: 1, school: "Enchantment", classes: ["bard", "druid", "sorcerer", "warlock", "wizard"],
@@ -257,19 +272,22 @@ export const SPELLS = {
     name: "Chromatic Orb", level: 1, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "90 ft.", components: "V, S, M", duration: "Instantaneous",
     text: "Hurl a 4-inch orb of energy in a damage type of your choice (Acid, Cold, Fire, Lightning, Poison, or Thunder).",
-    roll: "attack", saveAbility: null, damage: "3d8 of chosen type (scales with slot level)", effect: "Choose the damage type when cast."
+    roll: "attack", saveAbility: null, damage: "3d8 of chosen type", effect: "Choose the damage type when cast.",
+    scaling: "+1d8 per slot level above 1st."
   },
   colorSpray: {
     name: "Color Spray", level: 1, school: "Illusion", classes: ["sorcerer", "wizard"],
     time: "Action", range: "Self (15-ft. cone)", components: "V, S, M", duration: "1 round",
     text: "A dazzling array of flashing, colored light springs from your hand.",
-    roll: "none", saveAbility: null, damage: null, effect: "Blinds creatures in the cone with a total of 6d10 Hit Points worth of effect (weakest affected first), scales with slot level."
+    roll: "none", saveAbility: null, damage: null, effect: "Blinds creatures in the cone with a total of 6d10 Hit Points worth of effect (weakest affected first).",
+    scaling: "+2d10 of total Hit Points covered per slot level above 1st."
   },
   command: {
     name: "Command", level: 1, school: "Enchantment", classes: ["cleric", "paladin"],
     time: "Action", range: "60 ft.", components: "V", duration: "1 round",
     text: "Speak a one-word command (Approach, Drop, Flee, Grovel, or Halt) to a creature you can see.",
-    roll: "save", saveAbility: "wis", damage: null, effect: "On a failed save, the target obeys the command on its next turn."
+    roll: "save", saveAbility: "wis", damage: null, effect: "On a failed save, the target obeys the command on its next turn.",
+    scaling: "+1 target per slot level above 1st."
   },
   comprehendLanguages: {
     name: "Comprehend Languages", level: 1, school: "Divination", ritual: true, classes: ["bard", "cleric", "sorcerer", "warlock", "wizard"],
@@ -281,13 +299,15 @@ export const SPELLS = {
     name: "Create or Destroy Water", level: 1, school: "Transmutation", classes: ["cleric", "druid"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "Instantaneous",
     text: "Create up to 10 gallons of clean water, or destroy water in a 30-ft. cube of fog.",
-    roll: "none", saveAbility: null, damage: null, effect: "Utility only; scales with slot level."
+    roll: "none", saveAbility: null, damage: null, effect: "Utility only.",
+    scaling: "+10 gallons created (or +30-ft. cube destroyed) per slot level above 1st."
   },
   cureWounds: {
     name: "Cure Wounds", level: 1, school: "Abjuration", classes: ["bard", "cleric", "druid", "paladin", "ranger"],
     time: "Action", range: "Touch", components: "V, S", duration: "Instantaneous",
     text: "A creature you touch regains Hit Points.",
-    roll: "none", saveAbility: null, damage: null, effect: "Heal 1d8 + spellcasting modifier (scales with slot level); no effect on Undead or Constructs."
+    roll: "none", saveAbility: null, damage: null, effect: "Heal 1d8 + spellcasting modifier; no effect on Undead or Constructs.",
+    scaling: "+1d8 healing per slot level above 1st."
   },
   detectEvilAndGood: {
     name: "Detect Evil and Good", level: 1, school: "Divination", classes: ["cleric", "paladin"],
@@ -335,7 +355,8 @@ export const SPELLS = {
     name: "False Life", level: 1, school: "Necromancy", classes: ["sorcerer", "wizard"],
     time: "Action", range: "Self", components: "V, S, M", duration: "Instantaneous",
     text: "Bolster yourself with a necromantic buffer of vitality.",
-    roll: "none", saveAbility: null, damage: null, effect: "Gain 1d4 + 4 Temporary HP (scales with slot level)."
+    roll: "none", saveAbility: null, damage: null, effect: "Gain 1d4 + 4 Temporary HP.",
+    scaling: "+5 Temporary HP per slot level above 1st."
   },
   featherFall: {
     name: "Feather Fall", level: 1, school: "Transmutation", classes: ["bard", "sorcerer", "wizard"],
@@ -353,7 +374,8 @@ export const SPELLS = {
     name: "Fog Cloud", level: 1, school: "Conjuration", classes: ["druid", "ranger", "sorcerer", "wizard"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "Concentration, 1 hour",
     text: "Fill a 20-ft.-radius sphere with fog, heavily obscuring it.",
-    roll: "none", saveAbility: null, damage: null, effect: "Battlefield-control obscurement; no damage."
+    roll: "none", saveAbility: null, damage: null, effect: "Battlefield-control obscurement; no damage.",
+    scaling: "Radius +20 ft. per slot level above 1st."
   },
   goodberry: {
     name: "Goodberry", level: 1, school: "Conjuration", classes: ["druid", "ranger"],
@@ -365,13 +387,15 @@ export const SPELLS = {
     name: "Guiding Bolt", level: 1, school: "Evocation", classes: ["cleric"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "1 round",
     text: "A flash of light streaks toward a creature.",
-    roll: "attack", saveAbility: null, damage: "4d6 Radiant (scales with slot level)", effect: "The next attack roll against the target before the end of your next turn has Advantage."
+    roll: "attack", saveAbility: null, damage: "4d6 Radiant", effect: "The next attack roll against the target before the end of your next turn has Advantage.",
+    scaling: "+1d6 per slot level above 1st."
   },
   healingWord: {
     name: "Healing Word", level: 1, school: "Abjuration", classes: ["bard", "cleric", "druid"],
     time: "Bonus Action", range: "60 ft.", components: "V", duration: "Instantaneous",
     text: "A creature of your choice regains Hit Points.",
-    roll: "none", saveAbility: null, damage: null, effect: "Heal 1d4 + spellcasting modifier (scales with slot level); Bonus Action, so it's fast but smaller than Cure Wounds."
+    roll: "none", saveAbility: null, damage: null, effect: "Heal 1d4 + spellcasting modifier; Bonus Action, so it's fast but smaller than Cure Wounds.",
+    scaling: "+1d4 healing per slot level above 1st."
   },
   heroism: {
     name: "Heroism", level: 1, school: "Enchantment", classes: ["bard", "paladin"],
@@ -401,7 +425,8 @@ export const SPELLS = {
     name: "Inflict Wounds", level: 1, school: "Necromancy", classes: ["cleric"],
     time: "Action", range: "Touch", components: "V, S", duration: "Instantaneous",
     text: "Necrotic energy sears a creature you touch.",
-    roll: "attack", saveAbility: null, damage: "3d10 Necrotic (scales with slot level)", effect: null
+    roll: "attack", saveAbility: null, damage: "3d10 Necrotic", effect: null,
+    scaling: "+1d10 per slot level above 1st."
   },
   jump: {
     name: "Jump", level: 1, school: "Transmutation", classes: ["druid", "ranger", "sorcerer", "wizard"],
@@ -425,7 +450,8 @@ export const SPELLS = {
     name: "Magic Missile", level: 1, school: "Evocation", classes: ["sorcerer", "wizard"],
     time: "Action", range: "120 ft.", components: "V, S", duration: "Instantaneous",
     text: "Create three glowing darts of magical force; each automatically hits a target you choose.",
-    roll: "none", saveAbility: null, damage: "1d4+1 Force per dart (one more dart per slot level above 1st)", effect: "No attack roll — the darts never miss."
+    roll: "none", saveAbility: null, damage: "1d4+1 Force per dart (3 darts)", effect: "No attack roll — the darts never miss.",
+    scaling: "+1 dart per slot level above 1st."
   },
   protectionFromEvilAndGood: {
     name: "Protection from Evil and Good", level: 1, school: "Abjuration", classes: ["cleric", "paladin", "warlock", "wizard"],
@@ -449,7 +475,8 @@ export const SPELLS = {
     name: "Searing Smite", level: 1, school: "Evocation", classes: ["paladin"],
     time: "Bonus Action", range: "Self", components: "V", duration: "Concentration, 1 minute",
     text: "Your next weapon hit flares with fire.",
-    roll: "none", saveAbility: null, damage: "+1d6 Fire on your next hit, then 1d6 Fire at the end of each of the target's turns", effect: "Target can end the ongoing burning with a Constitution saving throw."
+    roll: "none", saveAbility: null, damage: "+1d6 Fire on your next hit, then 1d6 Fire at the end of each of the target's turns", effect: "Target can end the ongoing burning with a Constitution saving throw.",
+    scaling: "+1d6 to both the initial hit and the ongoing burn per slot level above 1st."
   },
   shield: {
     name: "Shield", level: 1, school: "Abjuration", classes: ["sorcerer", "wizard"],
@@ -473,7 +500,8 @@ export const SPELLS = {
     name: "Sleep", level: 1, school: "Enchantment", classes: ["bard", "sorcerer", "wizard"],
     time: "Action", range: "90 ft.", components: "V, S, M", duration: "1 minute",
     text: "Send creatures in a 20-ft.-radius sphere into a magical slumber.",
-    roll: "none", saveAbility: null, damage: null, effect: "5d8 Hit Points worth of creatures fall Unconscious, weakest/already-lowest-HP first (scales with slot level); Undead and Constructs are immune."
+    roll: "none", saveAbility: null, damage: null, effect: "5d8 Hit Points worth of creatures fall Unconscious, weakest/already-lowest-HP first; Undead and Constructs are immune.",
+    scaling: "+2d8 of total Hit Points covered per slot level above 1st."
   },
   speakWithAnimals: {
     name: "Speak with Animals", level: 1, school: "Divination", ritual: true, classes: ["bard", "druid", "ranger"],
@@ -497,7 +525,8 @@ export const SPELLS = {
     name: "Thunderwave", level: 1, school: "Evocation", classes: ["bard", "druid", "sorcerer", "wizard"],
     time: "Action", range: "Self (15-ft. cube)", components: "V, S", duration: "Instantaneous",
     text: "A wave of thunderous force sweeps out from you.",
-    roll: "save", saveAbility: "con", damage: "2d8 Thunder (scales with slot level)", effect: "On a failed save the target is also pushed 10 ft. away from you; unsecured objects in the area are pushed 10 ft. too."
+    roll: "save", saveAbility: "con", damage: "2d8 Thunder", effect: "On a failed save the target is also pushed 10 ft. away from you; unsecured objects in the area are pushed 10 ft. too.",
+    scaling: "+1d8 per slot level above 1st."
   },
   unseenServant: {
     name: "Unseen Servant", level: 1, school: "Conjuration", ritual: true, classes: ["bard", "warlock", "wizard"],
@@ -509,7 +538,8 @@ export const SPELLS = {
     name: "Witch Bolt", level: 1, school: "Evocation", classes: ["sorcerer", "warlock", "wizard"],
     time: "Action", range: "30 ft.", components: "V, S, M", duration: "Concentration, 1 minute",
     text: "A beam of crackling energy lances toward a creature, forming a sustained arc of lightning.",
-    roll: "attack", saveAbility: null, damage: "3d12 Lightning on the initial hit (scales with slot level), then 1d12 automatically each turn you maintain it", effect: "Requires Concentration each turn to keep dealing the follow-up damage; target can end it early by moving far enough away."
+    roll: "attack", saveAbility: null, damage: "3d12 Lightning on the initial hit, then 1d12 automatically each turn you maintain it", effect: "Requires Concentration each turn to keep dealing the follow-up damage; target can end it early by moving far enough away.",
+    scaling: "+1d12 to the initial hit per slot level above 1st (the automatic follow-up damage doesn't increase)."
   }
 };
 

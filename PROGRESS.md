@@ -312,6 +312,39 @@ prepared-from-book constraint confirmed) — not just read from the code.
 STATE_VERSION bumped 2 → 3 for `spellPicks`; `migrate()` normalizes it the
 same defensive way as every other field.
 
+### Done — explicit level/slot scaling in every TL;DR (user follow-up)
+
+The user asked for two things after using Phase B: full text before the
+TL;DR (it already was — checked the actual `popoverHtml()` output and the
+CSS, no flex/order tricks anywhere; DOM order and visual order both already
+put `.pop-body` before `.pop-tldr`, so nothing needed changing there), and
+explicit scaling by spell level / player level, which genuinely wasn't
+there before.
+
+- Every spell now names its exact upcast in the TL;DR. Cantrips (level 0)
+  get an auto-generated note — "gains one die at character levels 5, 11,
+  17" — via `spellScalingNote()` in `app.js`, rather than repeating the same
+  sentence on 25 data entries; two real exceptions are flagged in the data
+  (`noCantripScale: true` on Shillelagh and True Strike, which use weapon
+  damage rather than a scaling spell die; `cantripScaleNote` overrides the
+  default on Eldritch Blast, which adds beams rather than bigger dice).
+  Level-1 spells carry a new explicit `scaling` field in `spells.js` (e.g.
+  "+1d6 per slot level above 1st") for every spell that upcasts, filled in
+  from the actual 2024 rules per spell — and spells that genuinely don't
+  upcast now say so explicitly ("No change when cast with a higher-level
+  slot") rather than silently omitting the topic.
+- Feats: `tough`'s HP bonus is now stated with real numbers
+  ("+4 the level you take this, then +2 every level after") instead of the
+  vague "scales with character level". Any feat whose text mentions
+  "Proficiency Bonus" (Alert, Lucky, Crafter, Musician, Skulker's uses,
+  the Dwarven/Draconic-style per-Long-Rest counts, etc.) now automatically
+  gets a line noting it scales via Proficiency Bonus and exactly which
+  levels raise it (5, 9, 13, 17), detected from the feat's own text rather
+  than hand-flagged per entry.
+- Cleaned up `spells.js`'s `damage` strings to hold only the base damage
+  (e.g. `"1d10 Fire"`) — the old inline `"(scales with level)"` qualifiers
+  are gone now that scaling has its own explicit, structured home.
+
 ### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
 (requirement 10) and the printable sheet (requirement 15) all landed with
