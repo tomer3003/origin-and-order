@@ -471,6 +471,12 @@ function pickEntry(state, classIndex) {
    its own slot table — never the multiclass combined table, since known
    spells for a specific class are capped by that class's own progression. */
 export function maxSpellLevelFor(caster, classLevel) {
+  /* Warlock (and nothing else) uses Pact Magic: a single slot LEVEL that
+     rises on its own schedule, not a row of per-level slot counts. */
+  if (caster.type === "pact") {
+    const pact = PACT_MAGIC[classLevel];
+    return pact ? pact.level : 0;
+  }
   const table = caster.type === "full" ? FULL_CASTER_SLOTS
     : caster.type === "half" ? HALF_CASTER_SLOTS
     : caster.type === "third" ? THIRD_CASTER_SLOTS
