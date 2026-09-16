@@ -154,7 +154,7 @@ The live site was confirmed serving the modular app with a clean console,
 and the layout has no horizontal overflow at 375 px.
 
 ### In progress
-- Phase B (spells). See below.
+- Phase C's remaining item: post-creation single-step levelling. See below.
 
 ### Done — Phase A: breadth first (all seven items)
 
@@ -237,11 +237,80 @@ the note at the top of this file about working style going forward.)
   `.claude/launch.json` so local testing works from a fresh clone without
   hunting for the script — this machine still has no working node/python.
 
-### Next — Phase B: spells
-Spell database with per-class list filtering (requirement 16), and the
-level-by-level picking walkthrough (requirement 9). The hover popover
-component itself is DONE (see above) — Phase B just needs to call
-`popoverHtml()` with spell content instead of feat content.
+### Done — Phase B: spells (requirements 7, 9, 16), coverage note below
+
+New file `js/data/spells.js`: `SPELLS` (one entry per spell, tagged with
+every class `listKey` it appears on — shared spells like Cure Wounds are
+defined once, not duplicated per class) and `spellsForList(listKey, minLevel,
+maxLevel)`. Each spell carries structured `roll`/`saveAbility`/`damage`/
+`effect` fields that `spellTLDR()` in `app.js` turns into the same kind of
+auto-generated "what you actually get" line as `featTLDR()` — reuses the
+exact same `popoverHtml()` component built for feats, so hovering a spell
+name anywhere (the picker, a known/prepared list, the sheet) shows full text
++ TL;DR the same way a feat does.
+
+**Coverage: cantrips and level-1 spells only**, across the 6 lists that have
+spells (Bard, Cleric, Druid, Sorcerer, Warlock, Wizard) plus Paladin/Ranger's
+level-1 entries — roughly 80 unique spells. This is NOT the full ~350-spell
+book; levels 2-9 are Phase D. The picking mechanism, per-class filtering, and
+tooltips are fully built against this data, so extending it is purely adding
+more entries to `spells.js` — no code changes needed elsewhere.
+
+New "Spells" step, between Feats and Details (`js/rules.js`'s `spellWork()` /
+`spellStepIssues()`, `js/app.js`'s `buildSpellsStep()` and friends). One
+independent block per caster class entry (multiclass casters never merge
+their known/prepared lists, matching how their slots already didn't merge).
+Three distinct pickers, matching each class's actual rule and PROGRESS.md's
+original prepMode note:
+- **`free`** (Cleric, Druid, Paladin): a flat picker straight from the whole
+  eligible list, count = that level's `prepared` target. No permanent
+  known-spell list exists for these classes at all.
+- **`list`** (Bard, Ranger, Sorcerer, Warlock, and the Eldritch Knight /
+  Arcane Trickster third-caster subclasses): a level-by-level walkthrough
+  (`permanentGrowthWalkthrough`) — one section per class level reached,
+  each requiring exactly that level's new-spell delta (which is sometimes
+  +2 in a single level, e.g. Sorcerer 4→5 — never assume it's always +1).
+  Levels after the first also get one optional swap
+  (`swapControl`), matching the "replace one spell you know" rule; the swap
+  pool only offers spells known *before* the current level's own new picks,
+  not spells just learned this same level-up (fixed an off-by-one here
+  during testing — the pool briefly included one of the level's own new
+  picks). Known IS prepared for these classes; no separate prep step.
+- **`spellbook`** (Wizard only): the spellbook grows via the same
+  level-by-level walkthrough but with no swap option (per RAW), and
+  `prepared` is a separate flat picker constrained to spells already in the
+  book, re-choosable freely each time (no permanent commitment).
+
+Cantrips are handled the same way for every mode: a flat, freely-reassignable
+picker capped at the current count. Not level-walked on purpose — every
+class with cantrips lets you swap one on a Long Rest anyway, so a permanent
+history would be bookkeeping the rule doesn't actually need.
+
+Requirement 12 (already-known spells highlighted, never blocked): every
+picker marks a spell with the same `.dupe` chip styling already used for
+skills whenever `R.allKnownSpellKeys(state)` — every spell picked anywhere
+across every caster entry — already contains it, but never disables it for
+that reason (only "already in this list from an earlier level" and "target
+count reached" actually disable a chip).
+
+Requirement 16 (only show spells on the current class's list): every picker
+pulls from `R.spellPoolFor`, which is keyed off `caster.listKey` and Bard's
+`extraListsFromLevel` (Magical Secrets) — never a flat all-spells list.
+**Real bug caught while testing and fixed**: the level-1+ pools were
+initially built with `spell.level <= maxLevel`, which let cantrips (level 0)
+leak into them since `0 <= 1` is true. `spellsForList`/`spellPoolFor` now
+take an explicit `minLevel`, and the level-1+ pools pass `minLevel: 1`.
+
+`spellBox()` (used by both the sidebar-style summary and the printable
+sheet) now lists the actual chosen spell names by level, using the same
+hover-tooltip name element, instead of just showing counts.
+
+All three prepModes verified end-to-end in a real browser (Sorcerer/list
+with an actual swap performed, Cleric/free, Wizard/spellbook with the
+prepared-from-book constraint confirmed) — not just read from the code.
+
+STATE_VERSION bumped 2 → 3 for `spellPicks`; `migrate()` normalizes it the
+same defensive way as every other field.
 
 ### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
@@ -254,8 +323,9 @@ choices that new level actually triggers rather than walking all eight steps.
 designed for exactly this, so the data layer is ready for it.
 
 ### Then — Phase D: depth
-Full spell text coverage, full subclass features at every level, full
-equipment tables, more species. Class by class.
+Spell levels 2-9 (see the Phase B coverage note above), full subclass
+features at every level, full equipment tables, more species-adjacent
+polish (the Medium-or-Small size choice noted earlier). Class by class.
 
 ---
 

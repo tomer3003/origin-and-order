@@ -20,6 +20,7 @@ import { CLASSES } from "./data/classes/index.js";
 import { SPECIES, SPECIES_KEYS } from "./data/species.js";
 import { BACKGROUNDS, BACKGROUND_KEYS } from "./data/backgrounds.js";
 import { FEATS } from "./data/feats.js";
+import { SPELLS } from "./data/spells.js";
 import * as R from "./rules.js";
 import { STEPS, STEP_LABEL, defaultState, newClassEntry, loadDraft, saveDraft,
          clearDraft, loadIndex, saveCharacter, loadCharacter, deleteCharacter,
@@ -149,6 +150,43 @@ function featPopoverHtml(feat) {
   return popoverHtml({ name: feat.name, meta, body: feat.text, tldr: featTLDR(feat) });
 }
 
+/* A structured "what kind of roll, what damage, what else" line for a
+   spell, same idea as featTLDR — built from the spell's own roll/damage/
+   effect fields rather than re-parsing its prose. */
+function spellTLDR(spell) {
+  const bits = [];
+  if (spell.roll === "attack") bits.push("Spell attack roll");
+  else if (spell.roll === "save") bits.push(`Target makes a ${ABIL_NAME[spell.saveAbility]} saving throw against your spell DC`);
+  else bits.push("No attack roll or save");
+  if (spell.damage) bits.push(spell.damage);
+  if (spell.effect) bits.push(spell.effect);
+  if (spell.concentration) bits.push("requires Concentration");
+  return bits.map((b) => b.replace(/\.$/, "")).join(" — ") + ".";
+}
+
+function spellMetaLine(spell) {
+  const bits = [`Level ${spell.level === 0 ? "Cantrip" : spell.level}`, spell.school];
+  if (spell.ritual) bits.push("Ritual");
+  bits.push(spell.time, spell.range);
+  return bits.filter(Boolean).join(" · ");
+}
+
+function spellPopoverHtml(spell) {
+  return popoverHtml({ name: spell.name, meta: spellMetaLine(spell), body: spell.text, tldr: spellTLDR(spell) });
+}
+
+/* A spell name as a hoverable/focusable tooltip trigger, everywhere a spell
+   is shown — the picker, the known/prepared lists, the sheet. */
+function spellNameEl(key, extraClass) {
+  const spell = SPELLS[key];
+  if (!spell) return h("span", { text: key });
+  return h("b", {
+    class: `pop-trigger${extraClass ? " " + extraClass : ""}`,
+    text: spell.name,
+    ...tooltipTrigger(() => spellPopoverHtml(spell))
+  });
+}
+
 /* ---------------- Redraw vs navigate ---------------- */
 
 /* Redraw in place. Never scrolls. Call this from every option handler.
@@ -196,6 +234,7 @@ function stepIssues(key) {
     case "abilities":  return R.abilityStepIssues(state);
     case "hp":         return R.hpStepIssues(state);
     case "feats":      return R.featStepIssues(state);
+    case "spells":     return R.spellStepIssues(state);
     case "identity":   return state.alignment ? [] : ["Choose an alignment."];
     default:           return [];
   }
@@ -259,6 +298,7 @@ const BUILDERS = {
   abilities: buildAbilitiesStep,
   hp: buildHpStep,
   feats: buildFeatsStep,
+  spells: buildSpellsStep,
   identity: buildIdentityStep,
   sheet: buildSheetStep
 };
@@ -1335,7 +1375,204 @@ function asiBumpPicker(slot, pick) {
 }
 
 /* =======================================================================
-   Step 7 — Details
+   Step 7 — Spells (requirements 7, 9, 16)
+   ======================================================================= */
+
+function buildSpellsStep(panel) {
+  panel.appendChild(h("h2", { text: "Spells" }));
+  panel.appendChild(h("p", { class: "lede", text:
+    "Only spells on each class's own list are shown here. Hover or focus a spell to read it before choosing." }));
+
+  const work = R.spellWork(state);
+  if (!work.length) {
+    panel.appendChild(h("div", { class: "empty-note", text:
+      "Nothing casts yet — take levels in a spellcasting class (or an Eldritch Knight / Arcane Trickster subclass) to see spells here." }));
+    return;
+  }
+
+  work.forEach((w) => panel.appendChild(casterSpellBlock(w)));
+
+  const issues = issueList("spells");
+  if (issues) panel.appendChild(issues);
+}
+
+function casterSpellBlock(w) {
+  const wrap = h("fieldset", {},
+    h("legend", { text: `${w.className} · level ${w.level}` })
+  );
+  if (w.cantripTarget > 0) wrap.appendChild(cantripPicker(w));
+  if (w.prepMode === "free") {
+    wrap.appendChild(flatSpellPicker(w, "prepared", w.pool, w.preparedTarget,
+      `Prepared spells — choose ${w.preparedTarget}`,
+      "Prepares fresh after every Long Rest — there's no permanent known-spell list to grow, so pick your whole prepared set here."));
+  } else {
+    wrap.appendChild(permanentGrowthWalkthrough(w));
+    if (w.prepMode === "spellbook") {
+      const bookPool = (w.pick.spellbook || []).filter(Boolean);
+      wrap.appendChild(flatSpellPicker(w, "prepared", bookPool, w.preparedTarget,
+        `Prepared today — choose ${w.preparedTarget} from your spellbook`,
+        bookPool.length ? null : "Add spells to your spellbook above first."));
+    } else {
+      wrap.appendChild(h("div", { class: "hint", style: "margin-top:10px", text:
+        "Known spells are always prepared for this class — there's no separate daily-preparation step." }));
+    }
+  }
+  return wrap;
+}
+
+/* Cantrips: flat, freely reassignable, capped at the current count — every
+   class that has them lets you swap on a Long Rest anyway, so a level-walked
+   history would be more bookkeeping than the rule actually needs. */
+function cantripPicker(w) {
+  const chosen = (w.pick.cantrips || []).filter(Boolean);
+  const known = R.allKnownSpellKeys(state);
+  return h("div", { style: "margin-bottom:12px" },
+    h("div", { class: "hint", text: `Cantrips — choose ${w.cantripTarget}` }),
+    h("div", { class: "chip-select", style: "margin-top:4px" },
+      w.cantripPool.map((key) => {
+        const spell = SPELLS[key];
+        const on = chosen.includes(key);
+        const dupe = !on && known.has(key);
+        const full = !on && chosen.length >= w.cantripTarget;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+          type: "button", disabled: full,
+          title: dupe ? "You already know this from another source" : null,
+          ...tooltipTrigger(() => spellPopoverHtml(spell)),
+          onclick: () => {
+            w.pick.cantrips = on ? chosen.filter((k) => k !== key) : [...chosen, key];
+            rerender();
+          }
+        }, spell.name);
+      })
+    ),
+    h("div", { class: "hint", text: `${chosen.length} of ${w.cantripTarget} chosen.` })
+  );
+}
+
+/* The BG3-style level-by-level walkthrough for "list" and "spellbook" modes:
+   one section per class level reached, each showing how many NEW spells are
+   owed at that level and, for swap-capable classes, one optional swap. */
+function permanentGrowthWalkthrough(w) {
+  const list = (w.pick[w.permanentKey] || []).filter(Boolean);
+  const known = R.allKnownSpellKeys(state);
+  const label = w.permanentKey === "spellbook" ? "Spellbook" : "Known spells";
+  const wrap = h("div", { style: "margin-top:12px" },
+    h("h4", { text: `${label} — ${list.length} of ${w.permanentTarget}` })
+  );
+
+  let runningTotal = 0;
+  w.growth.forEach((row) => {
+    const startIndex = runningTotal;
+    runningTotal = row.target;
+    if (row.newCount === 0 && row.level !== 1) return;
+
+    const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
+    section.appendChild(h("div", { class: "spell-level-head" },
+      h("span", { text: `Level ${row.level}${row.newCount ? ` — pick ${row.newCount} new` : ""}` }),
+      h("span", { class: `count${list.length >= row.target ? " full" : ""}`, text: `${Math.min(list.length, row.target)} / ${row.target}` })
+    ));
+
+    const upToHere = list.slice(0, startIndex);
+    const newSlice = list.slice(startIndex, row.target);
+    section.appendChild(h("div", { class: "chip-select" },
+      row.pool.map((key) => {
+        const spell = SPELLS[key];
+        const alreadyElsewhere = upToHere.includes(key);
+        const on = newSlice.includes(key);
+        const dupe = !on && !alreadyElsewhere && known.has(key);
+        const full = !on && !alreadyElsewhere && (list.length >= row.target || newSlice.length >= row.newCount);
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${(full || alreadyElsewhere) ? " disabled" : ""}`,
+          type: "button", disabled: full || alreadyElsewhere,
+          title: alreadyElsewhere ? "Already in this list from an earlier level" : (dupe ? "You already know this from another source" : null),
+          ...tooltipTrigger(() => spellPopoverHtml(spell)),
+          onclick: () => {
+            const next = [...list];
+            if (on) next.splice(next.indexOf(key), 1);
+            else next.splice(startIndex + newSlice.length, 0, key);
+            w.pick[w.permanentKey] = next;
+            rerender();
+          }
+        }, spell.name);
+      })
+    ));
+
+    if (w.swapOnLevel && row.level > 1 && list.length >= row.target) {
+      section.appendChild(swapControl(w, list, startIndex));
+    }
+
+    wrap.appendChild(section);
+  });
+
+  return wrap;
+}
+
+/* One optional "replace a spell you know with a different one" control,
+   offered once per level for swap-capable classes (Bard/Ranger/Sorcerer/
+   Warlock and the third-caster subclasses) — never for the Wizard's
+   spellbook, which only ever grows, per RAW. */
+function swapControl(w, list, upToIndex) {
+  /* Spells known before THIS level's own new picks — RAW lets you replace a
+     spell you already knew, not one you just learned this same level-up. */
+  const learnedBeforeThisLevel = list.slice(0, upToIndex);
+  const outSel = h("select", { "aria-label": "Spell to replace" },
+    h("option", { value: "" }, "— optionally replace a known spell —"),
+    learnedBeforeThisLevel.map((key) => h("option", { value: key }, SPELLS[key].name))
+  );
+  const inSel = h("select", { "aria-label": "New spell" },
+    h("option", { value: "" }, "— with —"),
+    w.pool.filter((k) => !list.includes(k)).map((key) => h("option", { value: key }, SPELLS[key].name))
+  );
+  return h("div", { class: "optrow", style: "margin-top:6px" },
+    outSel, inSel,
+    h("button", {
+      class: "btn small", type: "button",
+      onclick: () => {
+        const from = outSel.value, to = inSel.value;
+        if (!from || !to) return;
+        const next = list.map((k) => (k === from ? to : k));
+        w.pick[w.permanentKey] = next;
+        rerender();
+      }
+    }, "Swap")
+  );
+}
+
+/* A flat, freely-reassignable pick of exactly `target` spells from `pool` —
+   used for "free" mode's daily preparation and "spellbook" mode's
+   prepared-from-book subset. Nothing here is a permanent commitment. */
+function flatSpellPicker(w, pickKey, pool, target, label, hint) {
+  const chosen = (w.pick[pickKey] || []).filter(Boolean);
+  const known = R.allKnownSpellKeys(state);
+  const wrap = h("div", { style: "margin-top:12px" },
+    h("div", { class: "hint", text: label })
+  );
+  if (hint) wrap.appendChild(h("div", { class: "hint", text: hint }));
+  wrap.appendChild(h("div", { class: "chip-select", style: "margin-top:4px" },
+    pool.map((key) => {
+      const spell = SPELLS[key];
+      const on = chosen.includes(key);
+      const dupe = !on && known.has(key);
+      const full = !on && chosen.length >= target;
+      return h("button", {
+        class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+        type: "button", disabled: full,
+        title: dupe ? "You already know this from another source" : null,
+        ...tooltipTrigger(() => spellPopoverHtml(spell)),
+        onclick: () => {
+          w.pick[pickKey] = on ? chosen.filter((k) => k !== key) : [...chosen, key];
+          rerender();
+        }
+      }, spell.name);
+    })
+  ));
+  wrap.appendChild(h("div", { class: "hint", text: `${chosen.length} of ${target} chosen.` }));
+  return wrap;
+}
+
+/* =======================================================================
+   Step 8 — Details
    ======================================================================= */
 
 function buildIdentityStep(panel) {
@@ -1385,7 +1622,7 @@ function buildIdentityStep(panel) {
 }
 
 /* =======================================================================
-   Step 8 — Sheet
+   Step 9 — Sheet
    ======================================================================= */
 
 function buildSheetStep(panel) {
@@ -1516,7 +1753,44 @@ function spellBox() {
     pact ? h("div", { class: "ps-slots", style: "margin-top:6px" },
       h("span", { class: "ps-slot", text: `Pact Magic: ${pact.slots} × level ${pact.level}` })) : null,
     R.isMulticlass(state) && slots.length ? h("div", { class: "ps-note", text:
-      `Slots from a combined caster level of ${R.casterLevel(state)}.` + (pact ? " Pact Magic is tracked separately." : "") }) : null
+      `Slots from a combined caster level of ${R.casterLevel(state)}.` + (pact ? " Pact Magic is tracked separately." : "") }) : null,
+    ...R.spellWork(state).map((w) => spellNameList(w))
+  );
+}
+
+/* The actual chosen spell names for one caster entry, grouped by level, with
+   the same hover tooltip used everywhere else a spell appears. Only shows
+   what's actually cast day-to-day: cantrips + prepared (or known, for
+   classes where known IS prepared) — not the Wizard's whole spellbook,
+   which is reference material rather than what's ready right now. */
+function spellNameList(w) {
+  const readyKeys = [
+    ...(w.pick.cantrips || []),
+    ...(w.prepMode === "free" || w.prepMode === "spellbook" ? (w.pick.prepared || []) : (w.pick.known || []))
+  ].filter(Boolean);
+  if (!readyKeys.length) return null;
+
+  const byLevel = new Map();
+  readyKeys.forEach((key) => {
+    const lvl = SPELLS[key] ? SPELLS[key].level : 0;
+    if (!byLevel.has(lvl)) byLevel.set(lvl, []);
+    byLevel.get(lvl).push(key);
+  });
+
+  return h("div", { class: "ps-spelllist", style: "margin-top:8px" },
+    [...byLevel.keys()].sort((a, b) => a - b).map((lvl) => {
+      const names = [];
+      byLevel.get(lvl)
+        .sort((a, b) => SPELLS[a].name.localeCompare(SPELLS[b].name))
+        .forEach((key, i) => {
+          if (i > 0) names.push(", ");
+          names.push(spellNameEl(key));
+        });
+      return h("div", { class: "pss-group" },
+        h("div", { class: "pss-head", text: `${w.className} — ${lvl === 0 ? "Cantrips" : `Level ${lvl}`}` }),
+        names
+      );
+    })
   );
 }
 

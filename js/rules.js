@@ -10,6 +10,7 @@ import { CLASSES, CASTER_WEIGHT, THIRD_CASTER_SUBCLASSES } from "./data/classes/
 import { SPECIES } from "./data/species.js";
 import { BACKGROUNDS } from "./data/backgrounds.js";
 import { FEATS } from "./data/feats.js";
+import { SPELLS, spellsForList } from "./data/spells.js";
 
 export const MAX_LEVEL = 20;
 
@@ -400,12 +401,13 @@ export function pactMagic(state) {
 /* Per-class cantrip and prepared-spell allowances, which are always read off
    that class's own table at that class's own level — never merged. */
 export function spellAllowances(state) {
-  return casterEntries(state).map(({ entry, cls, caster, fromSubclass, sub }) => {
+  return casterEntries(state).map(({ entry, index, cls, caster, fromSubclass, sub }) => {
     const level = entry.levels || 0;
     const i = level - 1;
     const cantrips = caster.cantripsByLevel ? (caster.cantripsByLevel[i] || 0) : 0;
     const prepared = caster.preparedByLevel ? (caster.preparedByLevel[i] || 0) : 0;
     return {
+      classIndex: index,
       classKey: entry.key,
       label: fromSubclass ? `${cls.name} (${sub.name})` : cls.name,
       ability: caster.ability,
@@ -428,6 +430,177 @@ export function spellSaveDC(state, ability) {
 
 export function spellAttackBonus(state, ability) {
   return profBonus(totalLevel(state)) + abilityMods(state)[ability];
+}
+
+/* ---------------- Spell picking (requirements 7, 9, 16) ----------------
+
+   Three prepMode behaviours, matching PROGRESS.md:
+     "free"      Cleric/Druid/Paladin. No permanent known-spell list at all —
+                 just pick `prepared` spells fresh from the whole eligible
+                 list. state.spellPicks[i].prepared holds that flat choice.
+     "list"      Bard/Ranger/Sorcerer/Warlock, and the third-caster
+                 subclasses (Eldritch Knight, Arcane Trickster). A permanent
+                 known-spell list that grows by a level-dependent amount
+                 (sometimes +2 in one level, not always +1) — walked through
+                 level by level, with one optional swap per level after the
+                 first if `swapOnLevel`. Known IS prepared; there's no
+                 separate daily-prep step. state.spellPicks[i].known.
+     "spellbook" Wizard only. The spellbook itself grows by a fixed count
+                 every level (no swap rule, per RAW) — state.spellPicks[i]
+                 .spellbook — and `prepared` is chosen fresh each time from
+                 spells already in the book, same flat-pick UI as "free"
+                 mode but constrained to the book's contents.
+   Cantrips are common to all three and are NOT level-walked — every class
+   that has them lets you swap on a Long Rest, so a flat, freely-reassignable
+   picker capped at the current count is accurate enough. */
+
+function pickEntry(state, classIndex) {
+  if (!state.spellPicks) state.spellPicks = {};
+  if (!state.spellPicks[classIndex]) {
+    state.spellPicks[classIndex] = { cantrips: [], known: [], spellbook: [], prepared: [] };
+  }
+  const p = state.spellPicks[classIndex];
+  if (!Array.isArray(p.cantrips)) p.cantrips = [];
+  if (!Array.isArray(p.known)) p.known = [];
+  if (!Array.isArray(p.spellbook)) p.spellbook = [];
+  if (!Array.isArray(p.prepared)) p.prepared = [];
+  return p;
+}
+
+/* Highest spell level a caster of this type can currently reach, read off
+   its own slot table — never the multiclass combined table, since known
+   spells for a specific class are capped by that class's own progression. */
+export function maxSpellLevelFor(caster, classLevel) {
+  const table = caster.type === "full" ? FULL_CASTER_SLOTS
+    : caster.type === "half" ? HALF_CASTER_SLOTS
+    : caster.type === "third" ? THIRD_CASTER_SLOTS
+    : null;
+  if (!table) return 0;
+  const slots = table[classLevel] || [];
+  for (let lvl = slots.length; lvl >= 1; lvl--) {
+    if (slots[lvl - 1] > 0) return lvl;
+  }
+  return 0;
+}
+
+/* Which spell lists a caster entry may currently pick from — almost always
+   just its own list, except Bard's Magical Secrets (from level 10) widens
+   it to a handful of other class lists. */
+export function eligibleListKeys(caster, classLevel) {
+  const out = new Set([caster.listKey]);
+  Object.entries(caster.extraListsFromLevel || {}).forEach(([lvl, lists]) => {
+    if (classLevel >= Number(lvl)) lists.forEach((k) => out.add(k));
+  });
+  return [...out];
+}
+
+export function spellPoolFor(caster, classLevel, minLevel, maxLevel) {
+  const seen = new Set();
+  const out = [];
+  eligibleListKeys(caster, classLevel).forEach((listKey) => {
+    spellsForList(listKey, minLevel, maxLevel).forEach((key) => {
+      if (!seen.has(key)) { seen.add(key); out.push(key); }
+    });
+  });
+  return out.sort((a, b) => SPELLS[a].level - SPELLS[b].level || SPELLS[a].name.localeCompare(SPELLS[b].name));
+}
+
+/* The level-by-level growth schedule for "list" and "spellbook" modes: how
+   many NEW permanent picks are owed at each class level the character has
+   reached, in order. Growth is sometimes +2 in a single level (e.g. Bard
+   4→5), so this can't just be "one pick per level". */
+export function spellGrowthSchedule(caster, classLevel) {
+  const rows = [];
+  for (let lvl = 1; lvl <= classLevel; lvl++) {
+    let target;
+    if (caster.prepMode === "spellbook") {
+      target = caster.spellbookStart + Math.max(0, lvl - 1) * caster.spellbookPerLevel;
+    } else {
+      target = (caster.preparedByLevel && caster.preparedByLevel[lvl - 1]) || 0;
+    }
+    const prevTarget = rows.length ? rows[rows.length - 1].target : 0;
+    rows.push({ level: lvl, target, newCount: Math.max(0, target - prevTarget) });
+  }
+  return rows;
+}
+
+/* Everything a spell-picking UI needs for one caster entry, computed fresh
+   from state — this is the single source of truth `app.js` renders from. */
+export function spellWorkFor(state, classIndex) {
+  const casters = casterEntries(state);
+  const found = casters.find((c) => c.index === classIndex);
+  if (!found) return null;
+  const { entry, caster, cls, fromSubclass, sub } = found;
+  const level = entry.levels || 0;
+  const maxLevel = maxSpellLevelFor(caster, level);
+  const pick = pickEntry(state, classIndex);
+  const cantripTarget = (caster.cantripsByLevel && caster.cantripsByLevel[level - 1]) || 0;
+  const growth = caster.prepMode !== "free" ? spellGrowthSchedule(caster, level) : [];
+  const permanentTarget = growth.length ? growth[growth.length - 1].target : 0;
+  const preparedTarget = (caster.preparedByLevel && caster.preparedByLevel[level - 1]) || 0;
+
+  /* Each row also gets the pool as it actually was at that class level, not
+     the character's current one — a spell of a level you couldn't yet cast
+     shouldn't be pickable into an earlier level's slice. Only matters once
+     spell levels above 1 exist, but it's cheap to get right now. */
+  growth.forEach((row) => {
+    row.maxLevel = maxSpellLevelFor(caster, row.level);
+    row.pool = spellPoolFor(caster, row.level, 1, row.maxLevel);
+  });
+
+  return {
+    classIndex, classKey: entry.key, className: fromSubclass ? `${cls.name} (${sub.name})` : cls.name,
+    level, caster, maxLevel,
+    cantripTarget, cantripPool: spellPoolFor(caster, level, 0, 0),
+    prepMode: caster.prepMode, swapOnLevel: !!caster.swapOnLevel,
+    growth, permanentTarget,
+    permanentList: caster.prepMode === "spellbook" ? pick.spellbook : pick.known,
+    permanentKey: caster.prepMode === "spellbook" ? "spellbook" : "known",
+    pool: spellPoolFor(caster, level, 1, maxLevel),
+    preparedTarget,
+    pick
+  };
+}
+
+/* Every caster entry's spell-picking status, used both to render the step
+   and to gate progress past it. */
+export function spellWork(state) {
+  return casterEntries(state).map(({ index }) => spellWorkFor(state, index));
+}
+
+export function spellStepIssues(state) {
+  const issues = [];
+  spellWork(state).forEach((w) => {
+    const cantrips = (w.pick.cantrips || []).filter(Boolean);
+    if (cantrips.length !== w.cantripTarget) {
+      issues.push(`${w.className}: choose ${w.cantripTarget} cantrip${w.cantripTarget === 1 ? "" : "s"} (${cantrips.length} chosen).`);
+    }
+    if (w.prepMode !== "free") {
+      const list = (w.permanentList || []).filter(Boolean);
+      if (list.length !== w.permanentTarget) {
+        issues.push(`${w.className}: ${w.permanentKey === "spellbook" ? "spellbook needs" : "known spells need"} ${w.permanentTarget} total (${list.length} chosen).`);
+      }
+    }
+    if (w.prepMode === "free" || w.prepMode === "spellbook") {
+      const prepared = (w.pick.prepared || []).filter(Boolean);
+      if (prepared.length !== w.preparedTarget) {
+        issues.push(`${w.className}: prepare ${w.preparedTarget} spell${w.preparedTarget === 1 ? "" : "s"} (${prepared.length} chosen).`);
+      }
+    }
+  });
+  return issues;
+}
+
+/* Every spell key the character currently knows/has prepared anywhere,
+   across every caster entry — used to flag "you already know this" without
+   blocking the pick (requirement 12), and by the sheet's spell list. */
+export function allKnownSpellKeys(state) {
+  const set = new Set();
+  Object.values(state.spellPicks || {}).forEach((p) => {
+    [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || [])]
+      .filter(Boolean).forEach((k) => set.add(k));
+  });
+  return set;
 }
 
 /* ---------------- Subclasses ---------------- */

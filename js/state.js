@@ -9,9 +9,9 @@
 
 import { ABILS } from "./data/core.js";
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
-export const STEPS = ["class", "species", "background", "abilities", "hp", "feats", "identity", "sheet"];
+export const STEPS = ["class", "species", "background", "abilities", "hp", "feats", "spells", "identity", "sheet"];
 
 export const STEP_LABEL = {
   class: "Classes & Levels",
@@ -20,6 +20,7 @@ export const STEP_LABEL = {
   abilities: "Ability Scores",
   hp: "Hit Points",
   feats: "Feats",
+  spells: "Spells",
   identity: "Details",
   sheet: "Character Sheet"
 };
@@ -66,6 +67,8 @@ export function defaultState() {
     featPicks: {},          // { "<slotId>": { featKey, abilityBumps? } }
     featSkills: [],
     featExpertise: [],
+
+    spellPicks: {},         // { "<classIndex>": { cantrips[], known[], spellbook[], prepared[] } }
 
     armorOverride: null,    // lets the player pick armour independent of the kit
     shieldOverride: null,
@@ -133,6 +136,18 @@ export function migrate(raw) {
   out.abilityAssign = { ...base.abilityAssign, ...(raw.abilityAssign || {}) };
   out.hpRolls = raw.hpRolls && typeof raw.hpRolls === "object" ? { ...raw.hpRolls } : {};
   out.featPicks = raw.featPicks && typeof raw.featPicks === "object" ? { ...raw.featPicks } : {};
+
+  /* Version 2 → 3: added spell picking. */
+  out.spellPicks = raw.spellPicks && typeof raw.spellPicks === "object" ? { ...raw.spellPicks } : {};
+  Object.keys(out.spellPicks).forEach((k) => {
+    const p = out.spellPicks[k] || {};
+    out.spellPicks[k] = {
+      cantrips: Array.isArray(p.cantrips) ? p.cantrips : [],
+      known: Array.isArray(p.known) ? p.known : [],
+      spellbook: Array.isArray(p.spellbook) ? p.spellbook : [],
+      prepared: Array.isArray(p.prepared) ? p.prepared : []
+    };
+  });
   ["speciesSkills", "featSkills", "featExpertise"].forEach((k) => {
     if (!Array.isArray(out[k])) out[k] = [];
   });

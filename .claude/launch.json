@@ -4,7 +4,7 @@
     {
       "name": "origin-and-order",
       "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-File", "tools/serve.ps1"],
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/serve.ps1"],
       "port": 8123
     }
   ]
