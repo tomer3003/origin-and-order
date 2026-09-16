@@ -345,6 +345,110 @@ there before.
   (e.g. `"1d10 Fire"`) — the old inline `"(scales with level)"` qualifiers
   are gone now that scaling has its own explicit, structured home.
 
+### Done — full rebuild of spells.js from the actual 2024 PHB text, not memory
+
+The user caught this directly: the previous `spells.js` (all of it — data
+written in the very first Phase B pass) was sourced from general trained
+knowledge of 5e, which meant it was quietly full of **2014 rules**, not 2024
+ones. They named Healing Word specifically. They also asked for the FULL
+spell description in the popover (like the official book/D&D Beyond layout:
+stat-block bullets, full prose, a real "Using a Higher-Level Spell Slot"
+paragraph) rather than a paraphrase, and reported Warlock spells were
+completely unpickable.
+
+**Every single spell in this file was re-transcribed from the user's own
+PHB text** (chapter 7, extracted to the scratchpad as `phb-spells.txt`,
+cross-checked against each class's own "___ Spell List" appendix for exact
+class membership) — not rewritten from memory a second time. What that
+process actually found, to be concrete about how wrong "sourced from
+memory" can go:
+
+- **Four cantrips that don't exist in this book at all**: Control Flames,
+  Create Bonfire, Frostbite, and Gust are Tasha's Cauldron of Everything
+  cantrips that the 2024 PHB did NOT carry forward — it replaced all four
+  with one new consolidated cantrip, **Elementalism** (Druid/Sorcerer/
+  Wizard), which is now in the data instead.
+- **Three spells whose core mechanic changed between 2014 and 2024**,
+  not just numbers: **Sleep** is now a Wisdom save with an Incapacitated →
+  Unconscious progression (was: a fixed Hit-Point pool with no save at
+  all). **Color Spray** is now a Constitution save inflicting Blinded
+  until the end of your next turn (was: the same fixed-HP-pool mechanic
+  as old Sleep). **Inflict Wounds** is now a Constitution save for 2d10
+  (was: a melee spell attack for a different die).
+- **Healing Word and Cure Wounds both doubled their dice** in 2024 —
+  2d4/2d8 base and +2d4/+2d8 per upcast level, not the 2014 1d4/1d8. This
+  is the exact error the user caught.
+- **False Life and Witch Bolt had wrong base amounts** (2d4+4 not 1d4+4;
+  2d12 not 3d12), and Witch Bolt's follow-up hit needs a Bonus Action each
+  turn — it isn't automatic.
+- **Several spells were missing a class from their real list**, or had one
+  that isn't real: Comprehend Languages doesn't include Cleric; Disguise
+  Self doesn't include Warlock; Bane, Command, and Protection from Evil
+  and Good, and Speak with Animals were each missing one real class
+  (Warlock, Bard, Druid, and Warlock respectively); Light was missing Bard.
+- **Several spells that DO upcast were marked as if they didn't**
+  (Charm Person, Longstrider, Jump, Tasha's Hideous Laughter all add a
+  target per slot level above 1st in 2024 — none of them upcast in 2014,
+  which is presumably where the blank came from), and **Sleep's fabricated
+  2014-style upcast note is gone** since 2024 Sleep has none.
+- Three cantrips needed a genuinely different scaling note rather than the
+  generic "+1 die" rule, now hand-written from the real text: Shillelagh's
+  weapon die itself grows (d8→d10→d12→2d6), Spare the Dying's *range*
+  doubles instead of adding damage, and True Strike adds a separate
+  Radiant damage die on top of the weapon's own damage.
+
+**The `text` field is now the spell's FULL description**, not a paraphrase
+— the user specifically asked to see the whole thing, the way the official
+book/D&D Beyond does. This is legally fine to reproduce this fully: nearly
+all core PHB spells are also published in the CC-BY-4.0-licensed D&D 5.2
+SRD, and the license permits verbatim reproduction with attribution, which
+is why there's now a real attribution line in `index.html`'s footer and an
+`SRD_ATTRIBUTION` export in `spells.js`. A new `higherLevel` field holds the
+spell's actual "Using a Higher-Level Spell Slot" / "Cantrip Upgrade"
+paragraph, shown as its own labeled block. Class/feat/species text stays
+paraphrased, as before — that discipline didn't change, only spells did,
+and only because full-text display was explicitly requested and is
+actually licensed for it.
+
+**The popover itself was redesigned** to match the book's own layout,
+matching a screenshot the user provided: title, an italic "Level 1
+Evocation (Sorcerer, Wizard)" line, a bulleted Casting Time/Range/
+Components/Duration block (`popoverHtml()` in `app.js` now takes a `stats`
+array, rendered as `dl`/`dt`/`dd` — CSS for this was already sitting
+unused in `style.css`), the full body text, the bolded higher-level
+paragraph, and the TL;DR **last** — full text is explicitly before the
+TL;DR now, per the user's request (it turned out the DOM order already had
+this right in the previous pass; the popover just didn't have "full text"
+worth ordering yet). The popover also widened from 360px to
+`min(440px, 100vw - 32px)` to fit real prose.
+
+**Two real code bugs, found by testing this rather than trusting the
+diff:**
+- **Warlock spells were entirely unpickable** — `maxSpellLevelFor()` only
+  handled `caster.type` of `"full"`/`"half"`/`"third"`; Warlock's Pact
+  Magic caster type is `"pact"`, which fell through to `return 0`, making
+  every spell look one level too high to ever be eligible. Fixed by
+  reading `PACT_MAGIC[level].level` for that type, the same table
+  `pactMagic()` already used elsewhere.
+- **`cantripScaleNote` was being silently discarded** for the three
+  cantrips that need it: `spellScalingNote()` checked `noCantripScale`
+  *before* checking for a custom note, so Eldritch Blast's real "adds a
+  beam" text never rendered — the TL;DR just went straight to the plain
+  damage line. Fixed by checking `cantripScaleNote` first; it always wins
+  when present.
+
+Verified all of this live in a real browser: a Warlock can now pick
+cantrips and a full 4-spell known list at level 3; the Witch Bolt and
+Eldritch Blast popovers were read back in full to confirm the new
+stat-block-then-TL;DR layout and the corrected scaling notes; `spellsForList`
+was queried directly to confirm Elementalism is present and the four fake
+cantrips are gone.
+
+**Still true, unchanged**: coverage is cantrips + level-1 spells only.
+Nothing here expanded which spells exist — this pass was entirely about
+making the ones that DO exist actually correct, sourced from the real book
+instead of general knowledge.
+
 ### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
 (requirement 10) and the printable sheet (requirement 15) all landed with

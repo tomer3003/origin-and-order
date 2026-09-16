@@ -112,10 +112,24 @@ function tooltipTrigger(buildHtml) {
   };
 }
 
-function popoverHtml({ name, meta, body, tldr }) {
+/* `stats` is an optional list of {label, value} pairs rendered as a
+   bulleted mini stat-block (Casting Time / Range / Components / Duration)
+   between the meta line and the full body text — matching the book's own
+   layout. `higherLevel`, when present, is shown as its own bolded
+   paragraph ("Using a Higher-Level Spell Slot." / "Cantrip Upgrade.")
+   AFTER the full body and BEFORE the TL;DR, same order as the book. */
+function popoverHtml({ name, meta, stats, body, higherLevelLabel, higherLevel, tldr }) {
+  const statsHtml = stats && stats.length
+    ? `<dl>${stats.map((s) => `<dt>${escapeHtml(s.label)}</dt><dd>${escapeHtml(s.value)}</dd>`).join("")}</dl>`
+    : "";
+  const higherHtml = higherLevel
+    ? `<div class="pop-higher"><b>${escapeHtml(higherLevelLabel || "Using a Higher-Level Spell Slot.")}</b> ${escapeHtml(higherLevel)}</div>`
+    : "";
   return `<h5>${escapeHtml(name)}</h5>` +
     (meta ? `<div class="pop-meta">${escapeHtml(meta)}</div>` : "") +
+    statsHtml +
     `<div class="pop-body">${escapeHtml(body)}</div>` +
+    higherHtml +
     (tldr ? `<div class="pop-tldr"><b>TL;DR</b><div>${escapeHtml(tldr)}</div></div>` : "");
 }
 
@@ -173,21 +187,43 @@ function spellTLDR(spell) {
    implicit, including saying so when a spell simply doesn't scale. */
 function spellScalingNote(spell) {
   if (spell.level === 0) {
+    /* A custom note always wins — it exists specifically because the
+       default "bigger die" rule doesn't describe what this cantrip does
+       (Eldritch Blast adds beams, Shillelagh grows its die, Spare the
+       Dying's range doubles, True Strike adds a separate damage type). */
+    if (spell.cantripScaleNote) return spell.cantripScaleNote;
     if (spell.noCantripScale || !spell.damage) return null;
-    return spell.cantripScaleNote || "Damage gains one die at character levels 5, 11, and 17 (2 dice at 5th, 3 at 11th, 4 at 17th)";
+    return "Damage gains one die at character levels 5, 11, and 17 (2 dice at 5th, 3 at 11th, 4 at 17th)";
   }
   return spell.scaling || "No change when cast with a higher-level slot beyond what the slot itself allows";
 }
 
+/* The book's own italic subhead style: "Level 1 Evocation (Sorcerer,
+   Wizard)" or "Evocation Cantrip (Warlock)". */
 function spellMetaLine(spell) {
-  const bits = [`Level ${spell.level === 0 ? "Cantrip" : spell.level}`, spell.school];
-  if (spell.ritual) bits.push("Ritual");
-  bits.push(spell.time, spell.range);
-  return bits.filter(Boolean).join(" · ");
+  const classList = spell.classes.map((k) => (CLASSES[k] && CLASSES[k].name) || k).join(", ");
+  const levelSchool = spell.level === 0
+    ? `${spell.school} Cantrip`
+    : `Level ${spell.level} ${spell.school}`;
+  return `${levelSchool} (${classList})${spell.ritual ? " — Ritual" : ""}`;
 }
 
 function spellPopoverHtml(spell) {
-  return popoverHtml({ name: spell.name, meta: spellMetaLine(spell), body: spell.text, tldr: spellTLDR(spell) });
+  const stats = [
+    { label: "Casting Time", value: spell.time },
+    { label: "Range", value: spell.range },
+    { label: "Components", value: spell.components },
+    { label: "Duration", value: spell.duration }
+  ];
+  return popoverHtml({
+    name: spell.name,
+    meta: spellMetaLine(spell),
+    stats,
+    body: spell.text,
+    higherLevelLabel: spell.level === 0 ? "Cantrip Upgrade." : "Using a Higher-Level Spell Slot.",
+    higherLevel: spell.higherLevel,
+    tldr: spellTLDR(spell)
+  });
 }
 
 /* A spell name as a hoverable/focusable tooltip trigger, everywhere a spell
