@@ -275,8 +275,8 @@ export function proficientSkills(state) {
   classEntries(state).forEach((c) => (c.skills || []).forEach((s) => set.add(s)));
   const bg = BACKGROUNDS[state.backgroundKey];
   if (bg) bg.skills.forEach((s) => set.add(s));
-  (state.speciesSkills || []).forEach((s) => set.add(s));
-  (state.featSkills || []).forEach((s) => set.add(s));
+  (state.speciesSkills || []).filter(Boolean).forEach((s) => set.add(s));
+  (state.featSkills || []).filter(Boolean).forEach((s) => set.add(s));
   return set;
 }
 
