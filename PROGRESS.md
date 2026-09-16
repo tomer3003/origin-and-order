@@ -81,47 +81,80 @@ Three distinct behaviours, driven by `caster.prepMode` in the class data:
   the SRD mirror. See "Corrections to the SRD mirror" below — the mirror had
   four real errors.
 
+- `js/data/species.js`, `js/data/backgrounds.js`, `js/data/feats.js` extracted
+  from the old build. `feats.js` is new work: origin feats, the full General
+  feat menu for ASI levels, and the Epic Boon menu for level 19, with
+  machine-checkable `prereqFn` predicates.
+- `js/rules.js` — the whole derivation layer, pure functions, no DOM.
+- `js/state.js` — state shape, `localStorage`, v1 → v2 migration, export/import.
+- `js/app.js` + `index.html` — the live modular app. **Phase A is complete**:
+  the scroll-jump bug, the multiclass flow, the HP rules, subclass-at-3 and
+  feat choices all work and were verified in a browser.
+- The old single-file build is kept as `legacy-single-file.html` for
+  reference; `index.html` is now the modular app.
+
+### Verified in a real browser (not just by reading the code)
+A Fighter 6 (Eldritch Knight) / Wizard 5 / Warlock 4 dwarf soldier, total
+level 15, produced all of these correctly:
+- Combined caster level 7 → slots `[4,3,3,1]`, with Pact Magic shown
+  separately as 2 × level 2.
+- Per-class allowances read off each class's own table at its own level: EK
+  2 cantrips / 4 prepared, Wizard 4 cantrips / 14 in spellbook / 9 prepared,
+  Warlock 3 cantrips / 5 prepared.
+- HP 125 on fixed averages: 13 at level 1 (d10 max + Con 2 + Dwarf 1), then
+  9 per Fighter level, 7 per Wizard level, 8 per Warlock level.
+- Feat slots owed retroactively at Fighter 4, Fighter 6, Wizard 4 and
+  Warlock 4 — i.e. character levels 4, 6, 10 and 15.
+- Prerequisites enforced: Actor greyed out at Charisma 8, Observant greyed
+  out at Int 12 / Wis 10, already-taken feats greyed out in other slots, and
+  an Origin feat cannot be selected in an ASI slot.
+- Saves from the first class only (Str +8, Con +7), Expertise doubling on
+  Arcana (+11), and no Jack of All Trades since there is no Bard.
+
 ### In progress
-- Phase A step 2 onward (see below). `index.html` is still the old
-  single-file level-1-only build and is deliberately left working while the
-  modular app is assembled beside it.
+- Phase B (spells). See below.
 
-### Next — Phase A: breadth first
-Per the user's explicit priority: get all 12 classes + multiclassing +
-levels 1-20 mechanically solid and pickable EARLY, even while spell lists,
-equipment and subclass feature text are still thin. Depth comes after.
+### Done — Phase A: breadth first (all seven items)
 
-1. ~~Split the single `index.html` into modules.~~ Data layer done
-   (`css/style.css`, `js/data/core.js`, `js/data/classes/*`). Still to
-   extract from the old `index.html`: species, backgrounds and feats into
-   `js/data/`, then build `js/rules.js`, `js/state.js`, `js/app.js` and the
-   new `index.html`.
-2. Fix the scroll-jump bug (requirement 14): split `renderAll()` into
-   `rerender()` (no scroll) and `goToStep()` (scrolls). Every option-click
-   handler calls `rerender()`; only Back/Continue and the step-tracker
-   scroll. Diagnosed root cause: old line 664 `window.scrollTo({top:0})`
-   inside `renderAll()`, which ~25 chip/radio/select handlers all called.
-3. All 12 classes with verified 1-20 feature tables and 4 subclasses each.
-4. Multiclass flow (requirements 2, 5): class + level-count dropdown,
-   "Add additional class" re-opens the picker with taken classes greyed out,
-   running total capped at 20.
-5. HP (requirements 4, 6): level 1 of the FIRST class = hit-die max + Con mod,
-   fixed. Every other level = an empty number input the player types their own
-   roll into, plus a "Roll" button that fills it with 1..hitDie.
-6. Subclass choice offered whenever a class reaches level 3.
-7. Feats at ASI levels + retroactively owed feats when starting above level 1.
+1. ~~Split the single `index.html` into modules.~~ Done. `css/style.css`,
+   `js/data/core.js`, `js/data/classes/*`, `js/data/{species,backgrounds,feats}.js`,
+   `js/rules.js`, `js/state.js`, `js/app.js`, and a new `index.html` shell.
+2. ~~Fix the scroll-jump bug (requirement 14).~~ Done, and the originally
+   diagnosed cause turned out to be only half the story. **Read this before
+   touching the render path:** removing `window.scrollTo({top:0})` from
+   `renderAll()` was necessary but not sufficient. Emptying a container
+   before refilling it collapses the document height, and the browser
+   clamps `scrollY` to the new tiny maximum at that instant; refilling does
+   not restore it, so the page still jumped with nothing calling
+   `scrollTo`. The fix is `swapChildren()` in `app.js`: build each subtree
+   detached and install it with `replaceChildren`, one atomic mutation, so
+   the document is never short. `rerender()` also restores `scrollY`
+   explicitly as a safety net. Never go back to clear-then-append.
+3. ~~All 12 classes with verified 1-20 tables and 4 subclasses each.~~ Done.
+4. ~~Multiclass flow (requirements 2, 5).~~ Done: per-class level dropdown
+   whose range is capped by the remaining headroom to 20, add-another-class
+   picker greying out taken classes, remove and make-starting-class.
+5. ~~HP (requirements 4, 6).~~ Done, plus roll-all / fixed-average
+   shortcuts and the Dwarven Toughness, Tough and Draconic Resilience riders.
+6. ~~Subclass choice at level 3 for every class.~~ Done.
+7. ~~Feats at ASI levels plus retroactively owed feats.~~ Done, with
+   prerequisites enforced and an inline +2/+1 picker for the ASI feat.
 
-### Then — Phase B: spells
+### Next — Phase B: spells
 Spell database with per-class list filtering (requirement 16), the
 level-by-level picking walkthrough (requirement 9), and the hover popover
 showing full rules text + a mechanical TL;DR (requirement 7). Same popover
 component is reused for feats (requirement 13).
 
-### Then — Phase C: persistence and output
+### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
-(requirement 10), post-creation single-step leveling mode (requirement 10),
-and the printable character-sheet view styled after the official 2024 layout
-(requirement 15) — our own layout, never Wizards' artwork or template.
+(requirement 10) and the printable sheet (requirement 15) all landed with
+`app.js` — our own layout, never Wizards' artwork or template. **Still to
+do: the post-creation single-step levelling mode** (requirement 10), i.e.
+open a saved character and add one level at a time, answering only the
+choices that new level actually triggers rather than walking all eight steps.
+`R.levelLog()` and the stable `classIndex:classLevel` feat slot ids were
+designed for exactly this, so the data layer is ready for it.
 
 ### Then — Phase D: depth
 Full spell text coverage, full subclass features at every level, full

@@ -2,7 +2,7 @@
    storage, no rendering. Everything the sheet shows is derived here. */
 
 import {
-  ABILS, ARMOR, PB_COST, STANDARD_ARRAY, SKILLS,
+  ABILS, ABIL_NAME, ARMOR, PB_COST, STANDARD_ARRAY, SKILLS,
   FULL_CASTER_SLOTS, HALF_CASTER_SLOTS, THIRD_CASTER_SLOTS, PACT_MAGIC,
   ASI_FEATURE, EPIC_BOON_FEATURE
 } from "./data/core.js";
@@ -531,7 +531,16 @@ export function pendingFeatSlots(state) {
   return featSlots(state).filter((slot) => {
     if (slot.fixedFeat) return false;
     const pick = picks[slot.id];
-    return !pick || !pick.featKey;
+    if (!pick || !pick.featKey) return true;
+    /* The Ability Score Improvement feat isn't finished until the actual
+       score bumps have been chosen. */
+    const feat = FEATS[pick.featKey];
+    if (feat && feat.asi) {
+      const bumps = pick.abilityBumps || {};
+      const total = Object.values(bumps).reduce((n, v) => n + (Number(v) || 0), 0);
+      return total !== 2;
+    }
+    return false;
   });
 }
 
@@ -599,11 +608,23 @@ export function featuresByClass(state) {
   });
 }
 
-/* If a feat slot has been filled, show the chosen feat rather than the stub. */
+/* If a feat slot has been filled, show the chosen feat rather than the stub.
+   For the Ability Score Improvement feat, name the bumps actually taken
+   instead of repeating the generic description. */
 function featOrStub(state, classIndex, classLevel, stub) {
   const pick = (state.featPicks || {})[`${classIndex}:${classLevel}`];
   if (pick && pick.featKey && FEATS[pick.featKey]) {
     const f = FEATS[pick.featKey];
+    if (f.asi) {
+      const bumps = Object.entries(pick.abilityBumps || {})
+        .filter(([, n]) => n > 0)
+        .map(([a, n]) => `${fmtMod(n)} ${ABIL_NAME[a]}`);
+      return {
+        name: f.name,
+        text: bumps.length ? bumps.join(", ") + "." : f.text,
+        isFeat: true
+      };
+    }
     return { name: f.name, text: f.text, isFeat: true };
   }
   return { ...stub, pending: true };

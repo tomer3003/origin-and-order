@@ -983,7 +983,7 @@ function rollDie(sides) { return 1 + Math.floor(Math.random() * sides); }
 function extraHpNotes() {
   const notes = [];
   const sp = SPECIES[state.speciesKey];
-  if (sp && sp.hpBonusPerLevel) notes.push(`${sp.name} Dwarven Toughness, +${sp.hpBonusPerLevel} per level`);
+  if (sp && sp.hpBonusPerLevel) notes.push(`${sp.name} species toughness, +${sp.hpBonusPerLevel} per level`);
   R.ownedFeatKeys(state).forEach((k) => {
     const f = FEATS[k];
     if (f && f.hpBonusPerLevel) notes.push(`${f.name}, +${f.hpBonusPerLevel} per level`);
@@ -1061,55 +1061,60 @@ function featSlotBlock(slot) {
   return block;
 }
 
-/* The Ability Score Improvement feat: +2 to one score, or +1 to two. */
+/* The Ability Score Improvement feat: +2 to one score, or +1 to two.
+
+   The mode is stored on the pick rather than inferred from the bumps,
+   because an empty bumps object is ambiguous — inferring it made "+2 to one
+   score" impossible to select. */
 function asiBumpPicker(slot, pick) {
   const bumps = pick.abilityBumps || {};
-  const mode = Object.values(bumps).some((v) => v === 2) ? "two" : "oneOne";
+  const mode = pick.asiMode === "two" ? "two" : "oneOne";
   const picked = Object.keys(bumps).filter((a) => bumps[a] > 0);
   const scores = R.finalAbilities(state);
 
-  const setBumps = (next) => {
-    state.featPicks[slot.id] = { ...pick, abilityBumps: next };
+  const update = (patch) => {
+    state.featPicks[slot.id] = { ...pick, ...patch };
     rerender();
   };
 
-  const wrap = h("div", { style: "margin-top:10px" },
+  return h("div", { style: "margin-top:10px" },
     h("div", { class: "method-toggle" },
       h("button", {
         class: `chip${mode === "two" ? " on" : ""}`, type: "button",
-        onclick: () => setBumps({})
+        onclick: () => update({ asiMode: "two", abilityBumps: {} })
       }, "+2 to one score"),
       h("button", {
         class: `chip${mode === "oneOne" ? " on" : ""}`, type: "button",
-        onclick: () => setBumps({})
+        onclick: () => update({ asiMode: "oneOne", abilityBumps: {} })
       }, "+1 to two scores")
     ),
     h("div", { class: "chip-select" },
       ABILS.map((a) => {
         const on = bumps[a] > 0;
-        /* A score can't be pushed past 20 by an ASI. */
-        const room = scores[a] - (bumps[a] || 0);
         const wants = mode === "two" ? 2 : 1;
-        const tooHigh = !on && room + wants > 20;
+        /* An ASI can't push a score past 20. Compare against the score as it
+           would be without this slot's own contribution. */
+        const without = scores[a] - (bumps[a] || 0);
+        const tooHigh = !on && without + wants > 20;
+        const full = !on && !tooHigh && (mode === "oneOne" && picked.length >= 2);
         return h("button", {
-          class: `chip${on ? " on" : ""}${tooHigh ? " disabled" : ""}`,
-          type: "button", disabled: tooHigh,
-          title: tooHigh ? "Would exceed 20" : null,
+          class: `chip${on ? " on" : ""}${tooHigh || full ? " disabled" : ""}`,
+          type: "button", disabled: tooHigh || full,
+          title: tooHigh ? "Would exceed 20" : (full ? "Two scores already chosen" : null),
           onclick: () => {
             const next = { ...bumps };
             if (on) delete next[a];
             else if (mode === "two") { Object.keys(next).forEach((k) => delete next[k]); next[a] = 2; }
-            else if (picked.length < 2) next[a] = 1;
-            setBumps(next);
+            else next[a] = 1;
+            update({ abilityBumps: next });
           }
         }, `${ABIL_ABBR[a]} ${scores[a]}`);
       })
     ),
     h("div", { class: "hint", text: mode === "two"
-      ? "Pick one score to raise by 2."
-      : "Pick two different scores to raise by 1 each." })
+      ? `Pick one score to raise by 2. ${picked.length ? "Chosen." : "Nothing chosen yet."}`
+      : `Pick two different scores to raise by 1 each. ${picked.length} of 2 chosen.` })
   );
-  return wrap;
 }
 
 /* =======================================================================
