@@ -27,7 +27,9 @@ export const sorcerer = {
     swapOnLevel: true,
     focus: "an Arcane Focus",
     cantripsByLevel: [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
-    preparedByLevel: [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22]
+    /* The Sorcerer is the odd full caster: it starts at 2 prepared spells
+       and climbs in twos early on. Read off the PHB table. */
+    preparedByLevel: [2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22]
   },
   asiLevels: [4, 8, 12, 16],
   epicBoonLevel: 19,
