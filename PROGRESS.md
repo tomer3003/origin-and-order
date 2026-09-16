@@ -8,6 +8,16 @@ partial, and what is next, so a cold start needs no re-derivation.
 
 ---
 
+## Local testing note
+
+This machine has **no node and no working python** (the `python` on PATH is
+the Microsoft Store stub). ES modules can't load over `file://`, so to see
+the app locally you need a server. There's a small PowerShell
+`HttpListener` static server kept in the scratchpad (`serve.ps1`) that works:
+`powershell -NoProfile -File serve.ps1` serves the repo on
+`http://localhost:8123/`. The deployed site needs no server at all — this is
+purely a local-testing workaround.
+
 ## Deployment / architecture facts
 
 - Plain ES modules (`<script type="module" src="js/app.js">`). No bundler, no
@@ -110,6 +120,29 @@ level 15, produced all of these correctly:
   an Origin feat cannot be selected in an ASI slot.
 - Saves from the first class only (Str +8, Con +7), Expertise doubling on
   Arcana (+11), and no Jack of All Trades since there is no Bard.
+
+A sweep over **all 12 classes × every subclass × levels 1-20** (each build
+run through `hpMax`, `ac`, `spellSlots`, `pactMagic`, `spellAllowances`,
+`featSlots`, `featuresByClass` and `tracksFor`) reported zero exceptions and
+zero malformed features or tracks.
+
+Multiclass spell slots were then checked case by case, all passing:
+
+| build | caster level | slots |
+|---|---|---|
+| Paladin 1 alone | 0 | `[2]` — own table, not the combined formula |
+| Ranger 1 alone | 0 | `[2]` |
+| Paladin 2 / Sorcerer 1 | 2 | `[3]` |
+| Fighter 3 Eldritch Knight | 1 | `[2]` |
+| Fighter 3 Champion | 0 | `[]` — third casting needs the subclass |
+| Rogue 3 Arcane Trickster | 1 | `[2]` |
+| Bard 20 | 20 | `[4,3,3,3,3,2,2,1,1]` |
+| Warlock 5 alone | 0 | `[]` plus Pact 2 × L3 |
+| Warlock 5 / Sorcerer 5 | 5 | `[4,3,2]` plus Pact 2 × L3, unmerged |
+| Cleric 10 / Wizard 5 / Paladin 4 | 17 | `[4,3,3,3,2,1,1,1,1]` |
+
+The live site was confirmed serving the modular app with a clean console,
+and the layout has no horizontal overflow at 375 px.
 
 ### In progress
 - Phase B (spells). See below.
