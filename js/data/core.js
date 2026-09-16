@@ -168,3 +168,26 @@ export const EPIC_BOON_FEATURE = {
 };
 
 export const SIZES = { small: "Small", medium: "Medium" };
+
+/* ---------- Fighting Styles ----------
+   Shared by Fighter (level 1), Paladin (level 2), Ranger (level 2), and the
+   Fighter's level-7 Additional Fighting Style. Our own wording. */
+export const FIGHTING_STYLES = {
+  archery:          { name: "Archery",            text: "+2 to attack rolls with Ranged weapons." },
+  blindFighting:    { name: "Blind Fighting",     text: "Blindsight 10 ft. — you can see anything in that range that isn't Invisible or behind cover, even while Blinded or in Darkness." },
+  defense:          { name: "Defense",            text: "+1 AC while wearing armor." },
+  duelling:         { name: "Duelling",           text: "+2 damage when you hit with a one-handed melee weapon and carry no other weapons." },
+  greatWeapon:      { name: "Great Weapon Fighting", text: "When a Heavy two-handed melee weapon's damage die rolls 1 or 2, treat it as a 3." },
+  interception:     { name: "Interception",        text: "Reaction when a creature within 5 ft. is hit: reduce the damage by 1d10 + your Proficiency Bonus (not below 0). Needs a Shield or a wielded weapon." },
+  protection:       { name: "Protection",          text: "Reaction while holding a Shield: impose Disadvantage on an attack roll against a creature within 5 ft. of you." },
+  thrownWeapon:     { name: "Thrown Weapon Fighting", text: "+2 damage when you hit with a thrown weapon, and you can draw the weapon as part of the attack." },
+  twoWeapon:        { name: "Two-Weapon Fighting", text: "Add the relevant ability modifier to the damage of the extra attack from Light-weapon two-weapon fighting." },
+  unarmedFighting:  { name: "Unarmed Fighting",    text: "Unarmed Strike damage becomes 1d6 + Str (1d8 with both hands free), and you deal 1d4 automatically to a creature you are Grappling." }
+};
+
+/* Which styles each class may pick from. */
+export const FIGHTING_STYLE_OPTIONS = {
+  fighter: Object.keys(FIGHTING_STYLES),
+  paladin: ["blindFighting", "defense", "duelling", "greatWeapon", "interception", "protection", "twoWeapon"],
+  ranger:  ["archery", "blindFighting", "defense", "duelling", "thrownWeapon", "twoWeapon"]
+};
