@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "origin-and-order",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-File", "tools/serve.ps1"],
+      "port": 8123
+    }
+  ]
+}
