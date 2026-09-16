@@ -50,17 +50,35 @@ function h(tag, attrs, ...kids) {
   return node;
 }
 
-function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 function byId(id) { return document.getElementById(id); }
 
 /* ---------------- Redraw vs navigate ---------------- */
 
-/* Redraw in place. Never scrolls. Call this from every option handler. */
+/* Redraw in place. Never scrolls. Call this from every option handler.
+
+   Two things are needed to actually hold the scroll position, and the first
+   one is easy to miss: emptying a container before refilling it collapses the
+   document height, at which point the browser clamps scrollY to the new
+   (tiny) maximum. Refilling afterwards does not undo that clamp, so the page
+   appears to jump to the top even though nothing ever called scrollTo. So we
+   build each subtree detached and swap it in with replaceChildren, which is a
+   single atomic mutation — the document is never short. The explicit restore
+   below is then just a safety net for the cases where the new panel really is
+   shorter than the old scroll offset. */
 function rerender() {
   saveDraft(state);
+  const y = window.scrollY;
   renderTracker();
   renderStepPanel();
   renderSidebar();
+  if (window.scrollY !== y) window.scrollTo({ top: y, behavior: "instant" });
+}
+
+/* Build children into a detached fragment, then swap them in atomically. */
+function swapChildren(host, build) {
+  const frag = document.createDocumentFragment();
+  build(frag);
+  host.replaceChildren(...frag.childNodes);
 }
 
 /* Change step, redraw, then scroll. The ONLY thing that scrolls. */
@@ -112,8 +130,10 @@ function furthestUnlocked() {
 /* ---------------- Tracker ---------------- */
 
 function renderTracker() {
-  const host = byId("tracker");
-  clear(host);
+  swapChildren(byId("tracker"), buildTracker);
+}
+
+function buildTracker(host) {
   const unlocked = furthestUnlocked();
   STEPS.forEach((key, i) => {
     const done = i < unlocked;
@@ -147,11 +167,11 @@ const BUILDERS = {
 };
 
 function renderStepPanel() {
-  const panel = byId("stepPanel");
-  clear(panel);
-  const key = STEPS[state.step];
-  BUILDERS[key](panel);
-  panel.appendChild(navRow(key));
+  swapChildren(byId("stepPanel"), (panel) => {
+    const key = STEPS[state.step];
+    BUILDERS[key](panel);
+    panel.appendChild(navRow(key));
+  });
 }
 
 function navRow(key) {
@@ -294,6 +314,17 @@ function classRows(entries) {
         h("span", { class: "crsub", text: subclassSummary(entry, cls) })
       );
     })
+  );
+}
+
+function levelTotal() {
+  const total = R.totalLevel(state);
+  const over = total > R.MAX_LEVEL;
+  return h("div", { class: "level-total" },
+    h("span", { class: "lt-num", text: String(total) }),
+    h("span", { class: "lt-label", text: over
+      ? `total level — over the cap of ${R.MAX_LEVEL}`
+      : `total level · proficiency bonus ${R.fmtMod(R.profBonus(total))}` })
   );
 }
 
@@ -1321,9 +1352,10 @@ function equipmentText() {
    ======================================================================= */
 
 function renderSidebar() {
-  const host = byId("sheet");
-  clear(host);
+  swapChildren(byId("sheet"), buildSidebar);
+}
 
+function buildSidebar(host) {
   const total = R.totalLevel(state);
   const mods = R.abilityMods(state);
   const scores = R.finalAbilities(state);
