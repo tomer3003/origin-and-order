@@ -449,6 +449,46 @@ Nothing here expanded which spells exist — this pass was entirely about
 making the ones that DO exist actually correct, sourced from the real book
 instead of general knowledge.
 
+### Done — Wizard's "spells learned another way" (user follow-up)
+
+Two more pieces of user feedback after the PHB spell rebuild:
+
+1. *"give the other classes that can swap spells on level up. I see bard can
+   do it but warlock can[not]."* Checked this directly rather than assuming:
+   `swapOnLevel: true` was already set in the data for every "list"-mode
+   caster (Bard, Ranger, Sorcerer, Warlock, and the Eldritch
+   Knight/Arcane Trickster subclasses) — `permanentGrowthWalkthrough()` in
+   `js/app.js` renders the same swap control for all of them off the same
+   `w.swapOnLevel` flag, with no class-specific branching. Built a real level
+   4 Warlock through the live UI (localStorage-seeded to skip the click-walk,
+   then driven for real) and confirmed the swap dropdowns render and work
+   identically to Bard at levels 2–4. The Warlock-specific bug the user was
+   actually hitting was the Pact Magic `maxSpellLevelFor` bug fixed earlier
+   this session (see above) — that made the whole spell pool empty, which
+   would have made swapping look broken too, for the same root cause as
+   "can't pick warlock spells." No further code change was needed here.
+
+2. *"for wizard create a separate section for spells learned with a free
+   choice of all spells."* This one was real: the Wizard's spellbook only
+   ever had the fixed per-level growth (6 at level 1, +2/level) with no way
+   to represent spells copied in later from a scroll or another wizard's
+   book — a real, uncapped RAW mechanic. Added a third array,
+   `spellPicks[i].extra`, alongside `known`/`spellbook`/`prepared`
+   (`js/rules.js` `pickEntry()`, `js/state.js` `migrate()` for old saves).
+   `js/app.js` gained `copiedSpellPicker()`, rendered as its own "Spells
+   learned another way" section between the per-level growth walkthrough and
+   the daily "prepared today" picker, for any `prepMode === "spellbook"`
+   caster (Wizard today, data-driven for whatever else might use that mode
+   later) — an uncapped, freely-toggled chip list over the same full-level
+   pool the growth rows draw from, no swap, no target count, "already known"
+   dupe-highlighting shared with every other picker via `allKnownSpellKeys()`
+   (which now also reads `.extra`). The "prepared today" pool was updated to
+   union `spellbook` and `extra` together, since both live in the same
+   physical book. Verified live: added Alarm via the new section, confirmed
+   it immediately appeared as a pickable option in "Prepared today," and
+   confirmed all four of its growth-row chips correctly flipped to the
+   "already known" dupe style without being blocked.
+
 ### Mostly done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
 (requirement 10) and the printable sheet (requirement 15) all landed with

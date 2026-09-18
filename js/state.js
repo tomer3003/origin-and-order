@@ -145,7 +145,8 @@ export function migrate(raw) {
       cantrips: Array.isArray(p.cantrips) ? p.cantrips : [],
       known: Array.isArray(p.known) ? p.known : [],
       spellbook: Array.isArray(p.spellbook) ? p.spellbook : [],
-      prepared: Array.isArray(p.prepared) ? p.prepared : []
+      prepared: Array.isArray(p.prepared) ? p.prepared : [],
+      extra: Array.isArray(p.extra) ? p.extra : []
     };
   });
   ["speciesSkills", "featSkills", "featExpertise"].forEach((k) => {

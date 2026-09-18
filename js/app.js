@@ -1459,7 +1459,8 @@ function casterSpellBlock(w) {
   } else {
     wrap.appendChild(permanentGrowthWalkthrough(w));
     if (w.prepMode === "spellbook") {
-      const bookPool = (w.pick.spellbook || []).filter(Boolean);
+      wrap.appendChild(copiedSpellPicker(w));
+      const bookPool = [...(w.pick.spellbook || []), ...(w.pick.extra || [])].filter(Boolean);
       wrap.appendChild(flatSpellPicker(w, "prepared", bookPool, w.preparedTarget,
         `Prepared today — choose ${w.preparedTarget} from your spellbook`,
         bookPool.length ? null : "Add spells to your spellbook above first."));
@@ -1587,6 +1588,39 @@ function swapControl(w, list, upToIndex) {
         rerender();
       }
     }, "Swap")
+  );
+}
+
+/* Spells added to the spellbook by copying them from a scroll or another
+   wizard's book, rather than by the guaranteed per-level growth above — RAW
+   places no cap on this, so it's a free, uncapped choice from the same pool
+   the growth walkthrough draws from, kept in its own list (`pick.extra`) so
+   it never throws off the growth schedule's own counts. */
+function copiedSpellPicker(w) {
+  const chosen = (w.pick.extra || []).filter(Boolean);
+  const known = R.allKnownSpellKeys(state);
+  return h("div", { style: "margin-top:12px" },
+    h("h4", { text: "Spells learned another way" }),
+    h("div", { class: "hint", text:
+      "Spells copied into your spellbook from a scroll or another spellbook — a free choice from the full list, with no cap and no swap." }),
+    h("div", { class: "chip-select", style: "margin-top:4px" },
+      w.pool.map((key) => {
+        const spell = SPELLS[key];
+        const on = chosen.includes(key);
+        const dupe = !on && known.has(key);
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}`,
+          type: "button",
+          title: dupe ? "You already know this from another source" : null,
+          ...tooltipTrigger(() => spellPopoverHtml(spell)),
+          onclick: () => {
+            w.pick.extra = on ? chosen.filter((k) => k !== key) : [...chosen, key];
+            rerender();
+          }
+        }, spell.name);
+      })
+    ),
+    h("div", { class: "hint", text: chosen.length ? `${chosen.length} copied.` : "None copied yet." })
   );
 }
 

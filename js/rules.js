@@ -457,13 +457,19 @@ export function spellAttackBonus(state, ability) {
 function pickEntry(state, classIndex) {
   if (!state.spellPicks) state.spellPicks = {};
   if (!state.spellPicks[classIndex]) {
-    state.spellPicks[classIndex] = { cantrips: [], known: [], spellbook: [], prepared: [] };
+    state.spellPicks[classIndex] = { cantrips: [], known: [], spellbook: [], prepared: [], extra: [] };
   }
   const p = state.spellPicks[classIndex];
   if (!Array.isArray(p.cantrips)) p.cantrips = [];
   if (!Array.isArray(p.known)) p.known = [];
   if (!Array.isArray(p.spellbook)) p.spellbook = [];
   if (!Array.isArray(p.prepared)) p.prepared = [];
+  /* Spells added to a spellbook by copying them from a scroll or another
+     spellbook, rather than by the fixed per-level growth — unlimited, free
+     choice of anything on the class's list, tracked separately from the
+     guaranteed `spellbook` growth so the growth walkthrough's counts stay
+     exact. Wizard-only in practice (the only current "spellbook" caster). */
+  if (!Array.isArray(p.extra)) p.extra = [];
   return p;
 }
 
@@ -603,7 +609,7 @@ export function spellStepIssues(state) {
 export function allKnownSpellKeys(state) {
   const set = new Set();
   Object.values(state.spellPicks || {}).forEach((p) => {
-    [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || [])]
+    [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || []), ...(p.extra || [])]
       .filter(Boolean).forEach((k) => set.add(k));
   });
   return set;
