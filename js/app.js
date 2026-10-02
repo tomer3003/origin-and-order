@@ -23,6 +23,7 @@ import { FEATS } from "./data/feats.js";
 import { SPELLS } from "./data/spells.js";
 import { WEAPONS, AMMUNITION, ARMOR_DETAILS, TOOLS, GEAR } from "./data/equipment.js";
 import { WEAPON_PROPERTIES, WEAPON_MASTERIES } from "./data/weapon-rules.js";
+import { GEAR_TEXT } from "./data/gear-text.js";
 import * as R from "./rules.js";
 import { STEPS, STEP_LABEL, defaultState, newClassEntry, loadDraft, saveDraft,
          clearDraft, loadIndex, saveCharacter, loadCharacter, deleteCharacter,
@@ -2021,6 +2022,109 @@ function flatSpellPicker(w, pickKey, pool, target, label, hint) {
    an add-item browser and attack lines on the sheet (see PROGRESS.md).
    ======================================================================= */
 
+/* "1 GP 5 SP" from copper pieces. */
+function fmtCost(cp) {
+  if (cp == null) return "—";
+  const parts = [];
+  let left = cp;
+  [["GP", 100], ["SP", 10], ["CP", 1]].forEach(([u, v]) => { const n = Math.floor(left / v); if (n) parts.push(`${n.toLocaleString()} ${u}`); left -= n * v; });
+  return parts.join(" ") || "0 CP";
+}
+function fmtWeight(lb) { return lb == null ? "—" : `${Math.round(lb * 100) / 100} lb.`; }
+
+/* One tooltip for any table item: weapons spell out their properties and
+   mastery, armor its AC and drawbacks, gear what it does, packs what's in them. */
+function itemPopoverHtml(info, it) {
+  if (!info) return popoverHtml({ name: it ? it.name : "Item", body: (it && it.note) || "A custom item." });
+  const stats = [{ label: "Cost", value: fmtCost(info.cost) }, { label: "Weight", value: fmtWeight(info.weight) }];
+  if (info.kind === "weapon") {
+    const props = info.properties.map((p) => `${p}: ${WEAPON_PROPERTIES[p] || ""}`);
+    if (info.range) props.push(`Range ${info.range} ft.${info.ammo ? ` (${info.ammo})` : ""}: ${WEAPON_PROPERTIES.Range}`);
+    return popoverHtml({
+      name: info.name,
+      meta: `${info.category === "simple" ? "Simple" : "Martial"} ${info.type === "melee" ? "Melee" : "Ranged"} Weapon`,
+      stats: [{ label: "Damage", value: `${info.damage} ${info.damageType}${info.versatile ? ` (${info.versatile} two-handed)` : ""}` },
+        { label: "Properties", value: info.propertiesText || "—" }, ...stats],
+      body: props.join("\n") || "No special properties.",
+      higherLevelLabel: `Mastery — ${info.mastery}.`, higherLevel: WEAPON_MASTERIES[info.mastery] || ""
+    });
+  }
+  if (info.kind === "armor") {
+    const notes = [info.donDoff ? `${info.donDoff}.` : null, info.strength ? `Needs ${info.strength}, or your Speed drops 10 ft.` : null,
+      info.stealth ? "Disadvantage on Dexterity (Stealth) checks." : null].filter(Boolean);
+    return popoverHtml({ name: info.name, meta: "Armor", stats: [{ label: "AC", value: info.ac }, ...stats], body: notes.join(" ") || "—" });
+  }
+  if (info.kind === "tool") {
+    return popoverHtml({ name: info.name, meta: `Tool (${info.category})`, stats: [{ label: "Ability", value: info.ability }, ...stats],
+      body: "With proficiency, add your Proficiency Bonus to ability checks using it." });
+  }
+  if (info.kind === "ammo") {
+    return popoverHtml({ name: info.name, meta: "Ammunition", stats: [{ label: "Per purchase", value: `${info.amount} (${info.storage})` }, ...stats],
+      body: "Used by weapons with the Ammunition property; each attack spends one." });
+  }
+  return popoverHtml({ name: info.name, meta: "Adventuring Gear", stats,
+    body: info.contents ? `Contains: ${info.contents.join(", ")}.` : (GEAR_TEXT[info.key] || "") });
+}
+
+function itemNameEl(it) {
+  const info = R.itemInfo(it.ref);
+  return h("b", { class: "pop-trigger", tabindex: "0", text: R.itemName(it), ...tooltipTrigger(() => itemPopoverHtml(info, it)) });
+}
+
+/* Weapon Mastery picks for one slot (a class feature or the Weapon Master
+   feat). Used by the Equipment step and level-up mode. */
+function masteryFieldset(slot) {
+  return h("fieldset", {},
+    h("legend", { text: `${slot.label} — choose ${slot.count}` }),
+    h("div", { class: "hint", style: "margin-bottom:6px", text:
+      slot.rule === "melee" ? "Simple or Martial melee weapons." : slot.rule === "proficient" ? "Weapons you're proficient with." : "Any Simple or Martial weapon." }),
+    h("div", { class: "chip-select" },
+      Object.entries(WEAPONS).filter(([k]) => slot.allowed(k)).map(([k, w]) => {
+        const on = slot.chosen.includes(k);
+        const full = !on && slot.chosen.length >= slot.count;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${full ? " disabled" : ""}`, type: "button", disabled: full,
+          ...tooltipTrigger(() => itemPopoverHtml({ kind: "weapon", key: k, ...w })),
+          onclick: () => { slot.set(on ? slot.chosen.filter((x) => x !== k) : [...slot.chosen, k]); rerender(); }
+        }, `${w.name} · ${w.mastery}`);
+      })),
+    h("div", { class: "hint", text: `${slot.chosen.length} of ${slot.count} chosen. You can change one after a Long Rest.` })
+  );
+}
+
+/* Browse the equipment tables and add items. Ammunition adds a purchase's
+   worth (20 Arrows); everything else adds one, stacking on a matching line. */
+let itemBrowserState = { tab: "weapon", q: "" };
+function itemBrowser() {
+  const tabs = [["weapon", "Weapons"], ["armor", "Armor"], ["ammo", "Ammunition"], ["tool", "Tools"], ["gear", "Gear"]];
+  const table = R.ITEM_TABLES[itemBrowserState.tab];
+  const q = itemBrowserState.q.toLowerCase();
+  const rows = Object.entries(table).filter(([, v]) => !q || v.name.toLowerCase().includes(q))
+    .sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const add = (kind, key) => {
+    const ref = `${kind}:${key}`;
+    const n = kind === "ammo" ? (table[key].amount || 1) : 1;
+    const line = state.inventory.find((it) => it.ref === ref);
+    if (line) line.qty = (Number(line.qty) || 0) + n; else state.inventory.push({ ref, qty: n });
+    rerender();
+  };
+  const search = h("input", { type: "search", placeholder: "Search…", value: itemBrowserState.q, "aria-label": "Search items",
+    oninput: (e) => { itemBrowserState.q = e.target.value; rerender(); const el = byId("itemSearch"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } } });
+  search.id = "itemSearch";
+  return h("fieldset", {},
+    h("legend", { text: "Add items" }),
+    h("div", { class: "chip-select", style: "margin-bottom:6px" },
+      tabs.map(([k, label]) => h("button", { class: `chip${itemBrowserState.tab === k ? " on" : ""}`, type: "button",
+        onclick: () => { itemBrowserState.tab = k; rerender(); } }, label)),
+      search),
+    h("div", { class: "chip-select" },
+      rows.map(([key, v]) => h("button", { class: "chip", type: "button",
+        ...tooltipTrigger(() => itemPopoverHtml({ kind: itemBrowserState.tab, key, ...v })),
+        onclick: () => add(itemBrowserState.tab, key) }, `${v.name} · ${fmtCost(v.cost)}`))),
+    h("div", { class: "hint", text: "Click to add. Prices are listed for reference; coins aren't deducted automatically." })
+  );
+}
+
 function buildEquipmentStep(panel) {
   panel.appendChild(h("h2", { text: "Equipment" }));
   panel.appendChild(h("p", { class: "lede", text:
@@ -2068,24 +2172,11 @@ function buildEquipmentStep(panel) {
     warn.map((t) => h("div", { class: "hint warn", text: t }))
   ));
 
-  /* Weapon Mastery. */
-  R.masterySlots(state).forEach((slot) => {
-    const entry = slot.entry;
-    panel.appendChild(h("fieldset", {},
-      h("legend", { text: `${slot.className} Weapon Mastery — choose ${slot.count}` }),
-      h("div", { class: "chip-select" },
-        Object.entries(WEAPONS).filter(([k]) => slot.allowed(k)).map(([k, w]) => {
-          const on = slot.chosen.includes(k);
-          const full = !on && slot.chosen.length >= slot.count;
-          return h("button", {
-            class: `chip${on ? " on" : ""}${full ? " disabled" : ""}`, type: "button", disabled: full,
-            title: `${w.mastery}: ${WEAPON_MASTERIES[w.mastery] || ""}`,
-            onclick: () => { entry.masteries = on ? slot.chosen.filter((x) => x !== k) : [...slot.chosen, k]; rerender(); }
-          }, `${w.name} (${w.mastery})`);
-        })),
-      h("div", { class: "hint", text: `${slot.chosen.length} of ${slot.count} chosen. Changeable after a Long Rest.` })
-    ));
-  });
+  /* Weapon Mastery (class features and the Weapon Master feat). */
+  R.masterySlots(state).forEach((slot) => panel.appendChild(masteryFieldset(slot)));
+
+  /* Add items from the tables. */
+  panel.appendChild(itemBrowser());
 
   /* Inventory. */
   const weight = R.carriedWeight(state), cap = R.carryingCapacity(state);
@@ -2098,7 +2189,7 @@ function buildEquipmentStep(panel) {
       return h("li", {},
         h("input", { type: "number", min: 0, value: it.qty, style: "width:4em", "aria-label": `${R.itemName(it)} quantity`,
           onchange: (e) => { it.qty = Math.max(0, Number(e.target.value) || 0); rerender(); } }),
-        " ", h("b", { text: R.itemName(it) }), detail ? ` — ${detail}` : "",
+        " ", itemNameEl(it), it.note ? ` (${it.note})` : "", detail && detail !== it.note ? ` — ${detail}` : "",
         " ", h("button", { class: "btn small ghost", type: "button", onclick: () => { state.inventory.splice(i, 1); rerender(); } }, "Remove"));
     })) : h("div", { class: "hint", text: "Empty — fill it from your starting equipment above." }),
     h("div", { class: "optrow" }, ["cp", "sp", "ep", "gp", "pp"].map((c) => h("label", {},
@@ -2244,16 +2335,14 @@ function printSheet() {
         )
       ),
       h("div", {},
+        attacksBox(),
         spellBox(),
         trackBox(),
         h("div", { class: "ps-box" },
           h("h4", { text: "Features & Traits" }),
           h("ul", { class: "ps-feats" }, featureLines())
         ),
-        h("div", { class: "ps-box" },
-          h("h4", { text: "Equipment" }),
-          h("div", { class: "ps-feats", text: equipmentText() })
-        ),
+        inventoryBox(),
         state.appearance || state.backstory ? h("div", { class: "ps-box" },
           h("h4", { text: "Notes" }),
           h("div", { class: "ps-feats", text: [state.appearance, state.backstory].filter(Boolean).join(" — ") })
@@ -2439,6 +2528,56 @@ function featureLines() {
   return out;
 }
 
+/* Weapon attacks: one row per kind of weapon carried, plus Unarmed Strike.
+   Mastery shows only for weapons the character has mastered. */
+function attacksBox() {
+  const rows = R.attacks(state);
+  const ac = R.acDetail(state);
+  return h("div", { class: "ps-box" },
+    h("h4", { text: "Attacks" }),
+    h("table", { class: "ps-table" },
+      h("thead", {}, h("tr", {}, ["Weapon", "Atk", "Damage", "Notes"].map((t) => h("th", { text: t })))),
+      h("tbody", {}, rows.map((a) => {
+        const info = a.key === "unarmed" ? null : R.itemInfo(`weapon:${a.key}`);
+        const notes = [
+          a.range && !/Range/.test(a.propertiesText || "") ? `Range ${a.range}` : null,
+          a.propertiesText || null,
+          a.mastery ? `Mastery: ${a.mastery}` : null,
+          a.proficient ? null : "not proficient"
+        ].filter(Boolean).join("; ");
+        return h("tr", {},
+          h("td", {}, info
+            ? h("span", { class: "pop-trigger", tabindex: "0", text: a.name, ...tooltipTrigger(() => itemPopoverHtml(info)) })
+            : a.name),
+          h("td", { class: "num", text: R.fmtMod(a.toHit) }),
+          h("td", { text: a.versatile ? `${a.damage} (${a.versatile} two-handed)` : a.damage }),
+          h("td", {}, notes, a.mastery ? h("span", { class: "pop-trigger", tabindex: "0", text: " ⓘ",
+            ...tooltipTrigger(() => popoverHtml({ name: a.mastery, meta: "Weapon mastery", body: WEAPON_MASTERIES[a.mastery] || "" })) }) : null));
+      }))),
+    h("div", { class: "ps-note", text: `AC ${ac.total}: ${ac.source}${ac.shield ? " + Shield" : ""}.` })
+  );
+}
+
+/* The inventory as carried; falls back to the kit text until the
+   Equipment step has been filled in. */
+function inventoryBox() {
+  const inv = state.inventory || [];
+  const coins = ["pp", "gp", "ep", "sp", "cp"].filter((c) => state.coins && state.coins[c]).map((c) => `${state.coins[c]} ${c.toUpperCase()}`);
+  if (!inv.length) {
+    return h("div", { class: "ps-box" }, h("h4", { text: "Equipment" }), h("div", { class: "ps-feats", text: equipmentText() }));
+  }
+  const worn = state.worn || {};
+  return h("div", { class: "ps-box" },
+    h("h4", { text: "Equipment" }),
+    h("ul", { class: "ps-feats" }, inv.filter((it) => Number(it.qty) > 0).map((it) => {
+      const info = R.itemInfo(it.ref);
+      const wornTag = info && info.kind === "armor" && (worn.armor === info.key || (info.key === "shield" && worn.shield)) ? " (worn)" : "";
+      return h("li", {}, itemNameEl(it), Number(it.qty) > 1 ? ` ×${it.qty}` : "", wornTag, it.note ? ` — ${it.note}` : "");
+    })),
+    h("div", { class: "ps-note", text: `${coins.join(", ") || "No coins"} · ${Math.round(R.carriedWeight(state) * 10) / 10} / ${R.carryingCapacity(state)} lb.` })
+  );
+}
+
 function equipmentText() {
   const bits = [];
   R.classEntries(state).forEach((entry, i) => {
@@ -2526,7 +2665,7 @@ function finishLevelUp() {
 }
 
 function levelUpIssues() {
-  return ["class", "hp", "feats", "spells"].flatMap((k) => stepIssues(k));
+  return ["class", "hp", "feats", "spells", "equipment"].flatMap((k) => stepIssues(k));
 }
 
 function buildLevelUpPanel(panel) {
@@ -2657,6 +2796,14 @@ function buildLevelUpChoose(panel) {
   R.featSlots(state)
     .filter((s) => s.id === `${index}:${lvl}` || pendingIds.has(s.id))
     .forEach((slot) => panel.appendChild(featSlotBlock(slot)));
+
+  /* Weapon Mastery: when this level raises the class's count (Fighter
+     4/10/16, Barbarian 4/10), a Weapon Master feat is taken now, or picks
+     are still owed. */
+  const beforeCounts = new Map(R.masterySlots(before).map((s) => [s.id, s.count]));
+  R.masterySlots(state)
+    .filter((s) => s.chosen.length !== s.count || s.count !== beforeCounts.get(s.id) || s.featSlotId === `${index}:${lvl}`)
+    .forEach((slot) => panel.appendChild(masteryFieldset(slot)));
 
   levelUpSpellBlocks(before, index, lvl).forEach((node) => panel.appendChild(node));
   /* A feat taken this level whose spells no spell block above showed (the

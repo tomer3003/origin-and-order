@@ -275,7 +275,8 @@ export const FEATS = {
   },
   weaponMaster: {
     name: "Weapon Master", category: "general", abilityChoice: ["str", "dex"],
-    text: "+1 Strength or Dexterity (max 20), and you gain the Weapon Mastery property of two kinds of weapons, swappable on a Long Rest."
+    text: "+1 Strength or Dexterity (max 20), and you can use the mastery property of one kind of Simple or Martial weapon you're proficient with; change it after a Long Rest.",
+    masteryPicks: 1
   },
 
   /* ---------------- Epic Boon feats (level 19) ---------------- */

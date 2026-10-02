@@ -314,7 +314,7 @@ export function matchItem(text) {
     }));
   }
   const n = normItemName(text);
-  return itemIndexCache.get(n) || itemIndexCache.get(singular(n)) || null;
+  return itemIndexCache.get(n) || itemIndexCache.get(n.replace(/s$/, "")) || itemIndexCache.get(singular(n)) || null;
 }
 
 /* Turn a kit string ("Chain Mail, Greatsword, 8 Javelins, Dungeoneer's Pack,
@@ -339,6 +339,9 @@ export function parseKit(text) {
         const inner = matchItem(paren[2]);
         if (inner && inner.startsWith("weapon:")) { items.push({ ref: inner, qty, note: paren[1] }); return; }
       }
+      /* "prayer book", "history book": a Book on that topic. */
+      const topic = name.match(/^(.+?) book$/i);
+      if (topic && !/spell/i.test(topic[1])) { items.push({ ref: "gear:book", qty, note: topic[1] }); return; }
       if (/^spellbook$/i.test(name)) { items.push({ ref: null, name: "Spellbook", qty, weight: 3, note: "Wizard spellbook" }); return; }
       const ref = matchItem(name);
       if (ref) items.push({ ref, qty, note: paren ? paren[2] : undefined });
@@ -440,7 +443,23 @@ export function masterySlots(state) {
       return true;
     };
     const chosen = (entry.masteries || []).filter((k) => allowed(k));
-    return { classIndex, className: cls.name, entry, count, allowed, chosen, rule: cls.masteryChoice };
+    return { id: `class:${classIndex}`, classIndex, className: cls.name, label: `${cls.name} Weapon Mastery`, entry, count, allowed, chosen,
+      rule: cls.masteryChoice, set: (list) => { entry.masteries = list; } };
+  }).filter(Boolean).concat(featMasterySlots(state));
+}
+
+/* Feats with `masteryPicks` (Weapon Master): that many proficient Simple or
+   Martial weapon kinds, stored on the feat's own pick. */
+function featMasterySlots(state) {
+  const picks = state.featPicks || {};
+  return featSlots(state).map((slot) => {
+    const pick = picks[slot.id];
+    const feat = pick && FEATS[pick.featKey];
+    if (!feat || !feat.masteryPicks) return null;
+    const allowed = (key) => isWeaponProficient(state, key);
+    const chosen = (pick.masteries || []).filter((k) => allowed(k));
+    return { id: `feat:${slot.id}`, featSlotId: slot.id, className: feat.name, label: `${feat.name} (${slot.label})`, count: feat.masteryPicks,
+      allowed, chosen, rule: "proficient", set: (list) => { pick.masteries = list; } };
   }).filter(Boolean);
 }
 
@@ -504,7 +523,7 @@ export function carryingCapacity(state) {
 export function equipmentStepIssues(state) {
   const issues = [];
   masterySlots(state).forEach((s) => {
-    if (s.chosen.length !== s.count) issues.push(`${s.className}: choose ${s.count} weapon${s.count === 1 ? "" : "s"} for Weapon Mastery (${s.chosen.length} chosen).`);
+    if (s.chosen.length !== s.count) issues.push(`${s.label}: choose ${s.count} weapon${s.count === 1 ? "" : "s"} (${s.chosen.length} chosen).`);
   });
   return issues;
 }
