@@ -52,6 +52,11 @@ at all — this is purely a local-testing workaround.
   quoted rules text. Keep that voice for every new class, spell, and feat.
 - Where the PHB and the SRD mirror disagree, the **PHB wins** (the SRD
   sometimes simplifies). Known instance: Ranger level-1 spell slots = 2.
+- **The user's own PHB 2024 PDF** is at
+  `C:\Users\Owner\Downloads\SKT1\DnD Beyond Player’s Handbook 2024.pdf`.
+  Scratchpad extracts don't survive between sessions, so re-extract with
+  `pdftotext -layout "<that path>" <scratchpad>/phb.txt` (pdftotext ships
+  with Git Bash). Chapter 7 spell descriptions start around line 16,400.
 - The SRD ships only ONE subclass per class. All four PHB subclasses per class
   are paraphrased from own knowledge.
 
