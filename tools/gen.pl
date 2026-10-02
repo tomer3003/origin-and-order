@@ -169,6 +169,32 @@ sub autoScaling {
   return $h;
 }
 
+# Official errata: Wizards of the Coast, "Errata — Player's Handbook (2024)",
+# v1.0 (2025), https://media.dndbeyond.com/compendium-images/errata/PHB-24/PHB-2024_v1.pdf
+# The user chose to apply it over the 9/8/24 printing. Each edit is an exact
+# find/replace on the PHB text and dies if the PHB text isn't found, so a
+# re-extraction can never silently drop one. (Conjure Woodland Beings' and
+# Giant Insect's errata were already fixed in this copy of the PHB.)
+# Non-spell errata are logged in PROGRESS.md.
+my @ERRATA = (
+  [animalShapes => text =>
+    "The target gains a number of Temporary Hit Points equal to the Beast form's Hit Points. The transformation lasts for the duration for each target, until the target has no Temporary Hit Points, or until the target leaves the form as a Bonus Action.",
+    "The target gains a number of Temporary Hit Points equal to the Hit Points of the first form into which it shape-shifts. These Temporary Hit Points vanish if any remain when the spell ends. The transformation lasts for the duration or until the target ends it as a Bonus Action."],
+  [conjureElemental => higherLevel => "increases by 2d8", "increases by 1d8"],
+  [conjureFey => higherLevel => "increases by 2d12", "increases by 1d12"],
+  [conjureMinorElementals => higherLevel => "increases by 2d8", "increases by 1d8"],
+  [polymorph => text =>
+    "equal to the Hit Points of the Beast form. The spell ends early",
+    "equal to the Hit Points of the Beast form. These Temporary Hit Points vanish if any remain when the spell ends. The spell ends early"],
+  [shapechange => text =>
+    "When you shape-shift, you gain a number of Temporary Hit Points equal to the Hit Points of the form. The spell ends early if you have no Temporary Hit Points left.",
+    "When you cast the spell, you gain a number of Temporary Hit Points equal to the Hit Points of the first form into which you shape-shift. These Temporary Hit Points vanish if any remain when the spell ends."],
+  [truePolymorph => text =>
+    "equal to the Hit Points of the new form. The spell ends early on the target if it has no Temporary Hit Points left.",
+    "equal to the Hit Points of the new form. These Temporary Hit Points vanish if any remain when the spell ends."],
+);
+my %ERRATA; push @{ $ERRATA{$_->[0]} }, $_ for @ERRATA;
+
 my %OUT;
 for my $key (keys %$norm) {
   my $b = $norm->{$key};
@@ -177,6 +203,13 @@ for my $key (keys %$norm) {
   $s{$_} = $b->{$_} for qw(name level school classes time range components duration);
   $s{text} = fixText($b->{text});
   my $hl = fixText($b->{higherLevel});
+  for my $er (@{ $ERRATA{$key} || [] }) {
+    my (undef, $field, $from, $to) = @$er;
+    my $ref = $field eq 'text' ? \$s{text} : \$hl;
+    my $at = index($$ref, $from);
+    die "errata for $key: PHB text not found: $from\n" if $at < 0;
+    substr($$ref, $at, length $from) = $to;
+  }
   # Animate Objects prints its stat block after the higher-level sentence.
   if ($hl =~ /^(.*? for each spell slot level above \d\.)\s+(Animated Object\b.*)$/) {
     $hl = $1; $s{text} .= " Stat block — $2";
@@ -199,7 +232,7 @@ for my $key (keys %$norm) {
     $hand{effect} = $EFFECT{$key} // undef;
     warn "no effect line for $key\n" unless defined $EFFECT{$key};
   }
-  $hand{scaling} = autoScaling($hl, $ord) if $s{level} > 0 && !exists $hand{scaling};
+  $hand{scaling} = autoScaling($hl, $ord) if $s{level} > 0 && (!exists $hand{scaling} || $ERRATA{$key});
   $hand{damage} = $DAMAGE{$key} if exists $DAMAGE{$key};
   $hand{effect} = $EFFECT{$key} if exists $EFFECT{$key};   # the table here is the source of truth
   %s = (%s, %hand);

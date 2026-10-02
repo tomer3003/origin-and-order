@@ -137,7 +137,7 @@ export const FEATS = {
   grappler: {
     name: "Grappler", category: "general", prereq: "Strength or Dexterity 13+",
     prereqFn: (s) => s.str >= 13 || s.dex >= 13, abilityChoice: ["str", "dex"],
-    text: "+1 Strength or Dexterity (max 20), Advantage on attacks against creatures you're Grappling, and a Grapple can also move the target with you."
+    text: "+1 Strength or Dexterity (max 20), Advantage on attacks against creatures you're Grappling, and moving a creature your size or smaller that you're Grappling costs no extra movement."
   },
   greatWeaponMaster: {
     name: "Great Weapon Master", category: "general", prereq: "Strength 13+",
@@ -196,7 +196,7 @@ export const FEATS = {
   },
   poisoner: {
     name: "Poisoner", category: "general", abilityChoice: ["dex", "int"],
-    text: "+1 Dexterity or Intelligence (max 20), Poisoner's Kit proficiency, your poison ignores Resistance, and you can coat a weapon as a Bonus Action."
+    text: "+1 Dexterity or Intelligence (max 20), Poisoner's Kit proficiency, your poison ignores Resistance, and you can coat a weapon or ammunition as a Bonus Action (the poison lasts 1 minute or until it deals damage)."
   },
   polearmMaster: {
     name: "Polearm Master", category: "general", prereq: "Strength or Dexterity 13+",
@@ -262,7 +262,7 @@ export const FEATS = {
   telekinetic: {
     name: "Telekinetic", category: "general", abilityChoice: ["int", "wis", "cha"],
     grantsSpells: { abilityFrom: "bump", fixed: ["mageHand"] },
-    text: "+1 Intelligence, Wisdom, or Charisma (max 20), Mage Hand cast without components and invisibly, and a Bonus Action telekinetic shove of 5 ft."
+    text: "+1 Intelligence, Wisdom, or Charisma (max 20), Mage Hand cast without components and invisibly, with its range and how far it can be from you both +30 ft., and a Bonus Action telekinetic shove of 5 ft."
   },
   telepathic: {
     name: "Telepathic", category: "general", abilityChoice: ["int", "wis", "cha"],

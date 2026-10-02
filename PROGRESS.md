@@ -689,12 +689,45 @@ one `spell:<slug>` page each, 0.4 s apart; some possessives slug as
   summon/animate stat blocks; page-header timestamps start with a form feed
   (now stripped); another dropped ligature ("rst" anywhere → "first", Word of
   Recall); six dropped hyphens ("40foot" → "40-foot").
-- **Errata group (decision pending with the user)**: wikidot reflects later
-  official errata that the user's 9/8/24 PHB printing predates — Conjure
-  Minor Elementals and Conjure Elemental upcast 1d8 (PHB 2d8), Conjure Fey
-  1d12 (PHB 2d12), Sorcerous Burst "ranged spell attack" (PHB "ranged attack
-  roll"), and reworded Temporary Hit Points clauses in Animal Shapes,
-  Polymorph, True Polymorph and Shapechange. Currently the PHB text stands.
+- After applying the official errata (see the errata log below): 366/391
+  identical. Of the rest, only two aren't explained by our own table
+  rewrites/typo fixes or stat-block formatting: **Sorcerous Burst** (wikidot
+  "ranged spell attack", PHB "ranged attack roll") and **Polymorph** (wikidot
+  adds "(see appendix B for a sample of Beast stat blocks)" and an "a").
+  Neither is in the official errata, so the PHB wording stands — wikidot
+  carries some unofficial edits, so it is NOT an errata source on its own.
+
+## Errata log (official) — check this when touching any listed area
+
+**Policy (user decision):** apply official Wizards of the Coast errata over
+the printed PHB. Source: "Errata — Player's Handbook (2024)", v1.0 (2025),
+https://media.dndbeyond.com/compendium-images/errata/PHB-24/PHB-2024_v1.pdf
+(also summarized at enworld.org/threads/d-d-2024-players-handbook-errata.712944).
+Wikidot sometimes reflects errata but also has unofficial edits, so confirm
+anything wikidot-only against the official document. The user's PHB PDF is a
+9/8/24 D&D Beyond copy that already includes *some* of these fixes (noted
+below) — always check the PDF text before assuming it's pre-errata. When the
+errata document gets a new version, re-download it and diff against this list.
+
+| Area | Erratum | Status |
+|---|---|---|
+| Goliath, Powerful Build (p. 192) | Advantage on ability **checks** (not saving throws) to end Grappled | Already in our PHB copy; `species.js` summary matches |
+| Grappler, Fast Wrestler (p. 204) | "Speed isn't halved" → "don't spend extra movement" to move a Grappled creature | In our PHB copy; `feats.js` summary updated to say so |
+| Poisoner, Brew Poison (p. 206) | Poison lasts until you **deal damage** with the item, not until you hit | In our PHB copy; `feats.js` summary now states the duration |
+| Telekinetic, Minor Telekinesis (p. 208) | Mage Hand's range **and** its distance from you both +30 ft. | In our PHB copy; `feats.js` summary now says both |
+| Armor table, Shield (p. 219) | Shield row reads "Shield (Utilize Action to Don or Doff)" | In our PHB copy. **Relevant later:** when equipment tables are built (Phase D), show the Utilize-action don/doff for shields |
+| Animal Shapes, Polymorph, Shapechange, True Polymorph | Temporary Hit Points vanish when the spell ends; reworded HP clauses | **Applied** in `tools/gen.pl` `@ERRATA` (exact find/replace, dies if PHB text moves) |
+| Conjure Elemental, Conjure Minor Elementals | Upcast +1d8 (was 2d8) | **Applied** (gen.pl) |
+| Conjure Fey | Upcast +1d12 (was 2d12) | **Applied** (gen.pl) |
+| Conjure Woodland Beings | Upcast "above 4" (was "above 5") | Already in our PHB copy |
+| Giant Insect | HP "+10 for each spell level above 4" | Already in our PHB copy |
+| Appendix B, all creature stat blocks (pp. 346-359) | Replaced with the Monster Manual (2025) versions | **Relevant later:** any feature that shows Beast/creature stats — Druid Wild Shape forms, Find Familiar / Find Steed / Animate Dead creatures, Polymorph targets, Ranger beast companion. Source those stat blocks from the MM 2025 (the user's MM PDF is in the same Downloads folder), not the PHB's appendix B |
+| Rules Glossary, Grappling (p. 367) | "Escaping a Grapple" → "Ending a Grapple", plus: the grappler can release the target at any time (no action) | Our PHB copy is still pre-errata here. **Relevant later:** if a rules glossary / condition tooltips are added, use the errata wording |
+| Rules Glossary, Hide [Action] (p. 368) | Invisible only "while hidden"; "The condition ends on you" → "You stop being hidden" | Our PHB copy is still pre-errata here. **Relevant later:** same as Grappling — and any class feature text that references hiding (Rogue Cunning Action, etc.) |
+
+The DMG and Monster Manual (2025) have their own errata documents on D&D
+Beyond; not relevant yet (this builder doesn't use DMG/MM content) — check
+them if Wild Shape forms, familiars, or magic items are ever added.
 
 **Gap noticed, not built**: Warlock Mystic Arcanum (`mysticArcanum` in
 warlock.js: one level 6/7/8/9 spell at Warlock 11/13/15/17) has data but no
