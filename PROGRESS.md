@@ -553,6 +553,42 @@ Known limit: removing a non-last class in the builder still shifts
 `featPicks`/`spellPicks` keyed by class index (pre-existing, unrelated to
 levelling).
 
+### Done — spells granted by feats (user request)
+
+Feats with a `grantsSpells` block in `feats.js` now get real spell options,
+checked against the PHB feat text: Magic Initiate (Cleric/Druid/Wizard: 2
+cantrips + 1 level-1 spell from that list, **plus a choice of Int/Wis/Cha**
+as the casting ability), Fey-Touched (Misty Step + one level-1
+Divination/Enchantment), Shadow-Touched (Invisibility + one level-1
+Illusion/Necromancy), Ritual Caster (level-1 Ritual spells equal to the
+Proficiency Bonus), Telepathic (Detect Thoughts) and Telekinetic (Mage
+Hand). Fey/Shadow/Ritual/Telepathic/Telekinetic cast with the ability the
+feat raised (`abilityBumps`).
+
+- Rules: `R.featSpellGrants()` (one entry per feat slot, anchored to the
+  class level whose slot took it; Origin feats anchor to the starting class
+  at level 1), `R.featSpellIssues()` (folded into `spellStepIssues`, so the
+  Spells step gates on them), and `allKnownSpellKeys` includes them. Picks
+  live on the feat's own pick (`featPicks[slot].spellPicks[pickId]`,
+  `.spellAbility`), so changing the feat clears them.
+- Placement, per the user: in the **Spells step, at the same level as the
+  slot that granted it**. Inside the class's growth walkthrough row (e.g.
+  directly under "Level 4 — pick 1 new" for a Sorcerer who took
+  Shadow-Touched at 4); at the end of the class block under a "Level N"
+  head for prepare-from-the-whole-list classes; in a "Spells from feats"
+  box for non-casters. `renderedGrants` in `app.js` prevents double
+  rendering. Level-up mode shows the same blocks for the feat taken that
+  level. The sheet lists each feat's spells with their own DC/attack.
+- Misty Step, Invisibility and Detect Thoughts were added to `spells.js`
+  from the PHB with `grantedOnly: true`, which keeps them out of class
+  pools until level 2 is transcribed in full. **Remove the flag in Phase D.**
+- Feat text corrected against the PHB: Magic Initiate's ability is a
+  choice (was hard-coded); **Spell Sniper grants no cantrip in 2024** (the
+  old text said it did); Ritual Caster scales with Proficiency Bonus.
+- Noticed, not fixed: the level-1 data has 49 spells and is missing some
+  2024 level-1 spells (e.g. Ray of Sickness), so school/ritual pools for
+  these feats are slightly short. Fold into the Phase D transcription pass.
+
 ### Then — Phase D: depth
 Spell levels 2-9 (see the Phase B coverage note above), full subclass
 features at every level, full equipment tables, more species-adjacent

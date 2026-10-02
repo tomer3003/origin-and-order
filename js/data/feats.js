@@ -29,15 +29,27 @@ export const FEATS = {
   },
   magicInitiateCleric: {
     name: "Magic Initiate (Cleric)", category: "origin",
-    text: "Two Cleric cantrips and one level 1 Cleric spell, always prepared and castable free once per Long Rest. Wisdom is the ability for them."
+    grantsSpells: { abilityFrom: "choice", picks: [
+      { id: "cantrips", label: "Cleric cantrips", level: 0, count: 2, list: "cleric" },
+      { id: "level1", label: "Level 1 Cleric spell", level: 1, count: 1, list: "cleric" }
+    ] },
+    text: "Two Cleric cantrips and one level 1 Cleric spell, always prepared and castable free once per Long Rest. Intelligence, Wisdom, or Charisma (your choice) is the ability for them. On each new level you may swap one of them for another of the same level from the Cleric list."
   },
   magicInitiateDruid: {
     name: "Magic Initiate (Druid)", category: "origin",
-    text: "Two Druid cantrips and one level 1 Druid spell, always prepared and castable free once per Long Rest. Wisdom is the ability for them."
+    grantsSpells: { abilityFrom: "choice", picks: [
+      { id: "cantrips", label: "Druid cantrips", level: 0, count: 2, list: "druid" },
+      { id: "level1", label: "Level 1 Druid spell", level: 1, count: 1, list: "druid" }
+    ] },
+    text: "Two Druid cantrips and one level 1 Druid spell, always prepared and castable free once per Long Rest. Intelligence, Wisdom, or Charisma (your choice) is the ability for them. On each new level you may swap one of them for another of the same level from the Druid list."
   },
   magicInitiateWizard: {
     name: "Magic Initiate (Wizard)", category: "origin",
-    text: "Two Wizard cantrips and one level 1 Wizard spell, always prepared and castable free once per Long Rest. Intelligence is the ability for them."
+    grantsSpells: { abilityFrom: "choice", picks: [
+      { id: "cantrips", label: "Wizard cantrips", level: 0, count: 2, list: "wizard" },
+      { id: "level1", label: "Level 1 Wizard spell", level: 1, count: 1, list: "wizard" }
+    ] },
+    text: "Two Wizard cantrips and one level 1 Wizard spell, always prepared and castable free once per Long Rest. Intelligence, Wisdom, or Charisma (your choice) is the ability for them. On each new level you may swap one of them for another of the same level from the Wizard list."
   },
   musician: {
     name: "Musician", category: "origin",
@@ -117,6 +129,9 @@ export const FEATS = {
   },
   feyTouched: {
     name: "Fey-Touched", category: "general", abilityChoice: ["int", "wis", "cha"],
+    grantsSpells: { abilityFrom: "bump", fixed: ["mistyStep"], picks: [
+      { id: "level1", label: "Level 1 Divination or Enchantment spell", level: 1, count: 1, schools: ["Divination", "Enchantment"] }
+    ] },
     text: "+1 Intelligence, Wisdom, or Charisma (max 20). Misty Step plus one level 1 Divination or Enchantment spell, both always prepared and each castable free once per Long Rest."
   },
   grappler: {
@@ -195,7 +210,10 @@ export const FEATS = {
   ritualCaster: {
     name: "Ritual Caster", category: "general", prereq: "Intelligence, Wisdom, or Charisma 13+",
     prereqFn: (s) => s.int >= 13 || s.wis >= 13 || s.cha >= 13, abilityChoice: ["int", "wis", "cha"],
-    text: "+1 Intelligence, Wisdom, or Charisma (max 20), and a ritual book holding two level 1 Ritual spells you can cast as Rituals, growing as you level."
+    grantsSpells: { abilityFrom: "bump", picks: [
+      { id: "rituals", label: "Level 1 Ritual spells (one per point of Proficiency Bonus)", level: 1, count: "pb", ritual: true }
+    ] },
+    text: "+1 Intelligence, Wisdom, or Charisma (max 20). Level 1 Ritual spells equal to your Proficiency Bonus, always prepared (one more each time it rises), and once per Long Rest you can cast one at its normal casting time without a slot."
   },
   sentinel: {
     name: "Sentinel", category: "general", prereq: "Strength or Dexterity 13+",
@@ -204,6 +222,9 @@ export const FEATS = {
   },
   shadowTouched: {
     name: "Shadow-Touched", category: "general", abilityChoice: ["int", "wis", "cha"],
+    grantsSpells: { abilityFrom: "bump", fixed: ["invisibility"], picks: [
+      { id: "level1", label: "Level 1 Illusion or Necromancy spell", level: 1, count: 1, schools: ["Illusion", "Necromancy"] }
+    ] },
     text: "+1 Intelligence, Wisdom, or Charisma (max 20). Invisibility plus one level 1 Illusion or Necromancy spell, both always prepared and each castable free once per Long Rest."
   },
   sharpshooter: {
@@ -236,14 +257,16 @@ export const FEATS = {
   },
   spellSniper: {
     name: "Spell Sniper", category: "general", prereq: "Spellcasting or Pact Magic", abilityChoice: ["int", "wis", "cha"],
-    text: "+1 Intelligence, Wisdom, or Charisma (max 20), one attack-roll cantrip, doubled range on your attack-roll spells, and they ignore Half and Three-Quarters Cover."
+    text: "+1 Intelligence, Wisdom, or Charisma (max 20). Your spell attack rolls ignore Half and Three-Quarters Cover, being within 5 ft. of an enemy doesn't give them Disadvantage, and attack-roll spells with a range of 10 ft. or more gain +60 ft."
   },
   telekinetic: {
     name: "Telekinetic", category: "general", abilityChoice: ["int", "wis", "cha"],
+    grantsSpells: { abilityFrom: "bump", fixed: ["mageHand"] },
     text: "+1 Intelligence, Wisdom, or Charisma (max 20), Mage Hand cast without components and invisibly, and a Bonus Action telekinetic shove of 5 ft."
   },
   telepathic: {
     name: "Telepathic", category: "general", abilityChoice: ["int", "wis", "cha"],
+    grantsSpells: { abilityFrom: "bump", fixed: ["detectThoughts"] },
     text: "+1 Intelligence, Wisdom, or Charisma (max 20), telepathic speech out to 60 ft., and Detect Thoughts always prepared, castable free once per Long Rest."
   },
   warCaster: {

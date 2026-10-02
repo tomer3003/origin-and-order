@@ -573,6 +573,35 @@ export const SPELLS = {
     higherLevel: "The initial damage increases by 1d12 for each spell slot level above 1.",
     roll: "attack", saveAbility: null, damage: "2d12 Lightning on the initial hit, then 1d12 (Bonus Action, each of your later turns)", effect: "The follow-up damage needs a Bonus Action each turn — it isn't automatic upkeep; ends if the target leaves range or gets Total Cover.",
     scaling: "+1d12 to the initial hit per slot level above 1st (the Bonus-Action follow-up damage doesn't increase)."
+  },
+
+  /* ---------------- Level 2 (feat grants only, for now) ----------------
+     Transcribed from the PHB because Fey-Touched, Shadow-Touched and
+     Telepathic hand them out. `grantedOnly` keeps them out of class spell
+     pools until level 2 is transcribed in full (Phase D) — otherwise a
+     level-3 caster would see a level-2 list of exactly three spells. Drop
+     the flag when the rest of level 2 lands. */
+  detectThoughts: {
+    name: "Detect Thoughts", level: 2, school: "Divination", classes: ["bard", "sorcerer", "wizard"], grantedOnly: true,
+    time: "Action", range: "Self", components: "V, S, M (1 Copper Piece)", duration: "Concentration, up to 1 minute",
+    text: "You activate one of the effects below. Until the spell ends, you can activate either effect as a Magic action on your later turns. Sense Thoughts. You sense the presence of thoughts within 30 feet of yourself that belong to creatures that know languages or are telepathic. You don't read the thoughts, but you know that a thinking creature is present. The spell is blocked by 1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead. Read Thoughts. Target one creature you can see within 30 feet of yourself or one creature within 30 feet of yourself that you detected with the Sense Thoughts option. You learn what is most on the target's mind right now. If the target doesn't know any languages and isn't telepathic, you learn nothing. As a Magic action on your next turn, you can try to probe deeper into the target's mind. If you probe deeper, the target makes a Wisdom saving throw. On a failed save, you discern the target's reasoning, emotions, and something that looms large in its mind (such as a worry, love, or hate). On a successful save, the spell ends. Either way, the target knows that you are probing into its mind, and until you shift your attention away from the target's mind, the target can take an action on its turn to make an Intelligence (Arcana) check against your spell save DC, ending the spell on a success.",
+    roll: "save", saveAbility: "wis", damage: null, effect: "Sense thinking creatures within 30 ft., or read one creature's surface thoughts; probing deeper allows a Wisdom save.",
+    scaling: "No change when cast with a higher-level slot."
+  },
+  invisibility: {
+    name: "Invisibility", level: 2, school: "Illusion", classes: ["bard", "sorcerer", "warlock", "wizard"], grantedOnly: true,
+    time: "Action", range: "Touch", components: "V, S, M (an eyelash in gum arabic)", duration: "Concentration, up to 1 hour",
+    text: "A creature you touch has the Invisible condition until the spell ends. The spell ends early immediately after the target makes an attack roll, deals damage, or casts a spell.",
+    higherLevel: "You can target one additional creature for each spell slot level above 2.",
+    roll: "none", saveAbility: null, damage: null, effect: "One touched creature is Invisible until it attacks, deals damage, or casts a spell.",
+    scaling: "+1 creature per slot level above 2nd."
+  },
+  mistyStep: {
+    name: "Misty Step", level: 2, school: "Conjuration", classes: ["sorcerer", "warlock", "wizard"], grantedOnly: true,
+    time: "Bonus Action", range: "Self", components: "V", duration: "Instantaneous",
+    text: "Briefly surrounded by silvery mist, you teleport up to 30 feet to an unoccupied space you can see.",
+    roll: "none", saveAbility: null, damage: null, effect: "Bonus Action teleport up to 30 ft. to a space you can see.",
+    scaling: "No change when cast with a higher-level slot."
   }
 };
 
@@ -582,7 +611,7 @@ export const SPELL_KEYS = Object.keys(SPELLS);
    `listKey`'s list, sorted by level then name. Cantrips are level 0. */
 export function spellsForList(listKey, minLevel, maxLevel) {
   return SPELL_KEYS
-    .filter((k) => SPELLS[k].classes.includes(listKey) && SPELLS[k].level >= minLevel && SPELLS[k].level <= maxLevel)
+    .filter((k) => !SPELLS[k].grantedOnly && SPELLS[k].classes.includes(listKey) && SPELLS[k].level >= minLevel && SPELLS[k].level <= maxLevel)
     .sort((a, b) => SPELLS[a].level - SPELLS[b].level || SPELLS[a].name.localeCompare(SPELLS[b].name));
 }
 

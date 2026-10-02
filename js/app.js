@@ -362,6 +362,7 @@ const BUILDERS = {
 
 function renderStepPanel() {
   swapChildren(byId("stepPanel"), (panel) => {
+    renderedGrants = new Set();
     if (state.levelUp) { buildLevelUpPanel(panel); return; }
     const key = STEPS[state.step];
     BUILDERS[key](panel);
@@ -1443,13 +1444,16 @@ function buildSpellsStep(panel) {
     "Only spells on each class's own list are shown here. Hover or focus a spell to read it before choosing." }));
 
   const work = R.spellWork(state);
-  if (!work.length) {
+  const anyGrants = R.featSpellGrants(state).length > 0;
+  if (!work.length && !anyGrants) {
     panel.appendChild(h("div", { class: "empty-note", text:
       "Nothing casts yet — take levels in a spellcasting class (or an Eldritch Knight / Arcane Trickster subclass) to see spells here." }));
     return;
   }
 
   work.forEach((w) => panel.appendChild(casterSpellBlock(w)));
+  const leftover = leftoverGrantsBox();
+  if (leftover) panel.appendChild(leftover);
 
   const issues = issueList("spells");
   if (issues) panel.appendChild(issues);
@@ -1477,7 +1481,106 @@ function casterSpellBlock(w) {
         "Known spells are always prepared for this class — there's no separate daily-preparation step." }));
     }
   }
+  /* Feat grants anchored to this class that no walkthrough row claimed
+     (always the case for prepare-from-the-whole-list classes). */
+  R.featSpellGrants(state)
+    .filter((g) => g.anchorIndex === w.classIndex && !renderedGrants.has(g.slot.id))
+    .sort((a, b) => a.anchorLevel - b.anchorLevel)
+    .forEach((g) => {
+      wrap.appendChild(h("div", { class: "spell-level-head", style: "margin-top:12px" },
+        h("span", { text: `Level ${g.anchorLevel}` })));
+      wrap.appendChild(featSpellGrantBlock(g));
+    });
   return wrap;
+}
+
+/* ---------------- Spells granted by feats ----------------
+
+   A feat's spell choices render beside the class level that took the feat:
+   inside that class's growth walkthrough, right under "Level 4 — pick 1
+   new", when the class has one; at the end of the class's block for
+   prepare-from-the-whole-list classes; otherwise in a "Spells from feats"
+   box. `renderedGrants` (reset per panel build) stops a grant drawing twice
+   when more than one of those places could claim it. */
+let renderedGrants = new Set();
+
+function grantsAt(classIndex, classLevel) {
+  return R.featSpellGrants(state).filter((g) =>
+    g.anchorIndex === classIndex && g.anchorLevel === classLevel && !renderedGrants.has(g.slot.id));
+}
+
+function featPickFor(slotId) {
+  if (!state.featPicks[slotId]) state.featPicks[slotId] = {};
+  return state.featPicks[slotId];
+}
+
+function featSpellGrantBlock(g) {
+  renderedGrants.add(g.slot.id);
+  const known = R.allKnownSpellKeys(state);
+  const wrap = h("div", { class: "spell-groups feat-grant", style: "margin:6px 0 10px" },
+    h("div", { class: "spell-level-head" },
+      h("span", {},
+        h("span", { class: "pop-trigger", text: g.feat.name, ...tooltipTrigger(() => featPopoverHtml(g.feat)) }),
+        ` — feat from ${g.slot.classKey ? g.slot.label : g.slot.source}`),
+      h("span", { class: "count", text: g.ability ? `${ABIL_ABBR[g.ability]} casting` : "" }))
+  );
+
+  if (g.abilityFrom === "choice") {
+    wrap.appendChild(h("div", { class: "hint", text: "Spellcasting ability for these spells" }));
+    wrap.appendChild(h("div", { class: "chip-select", style: "margin:4px 0 8px" },
+      ["int", "wis", "cha"].map((a) => h("button", {
+        class: `chip${g.ability === a ? " on" : ""}`, type: "button",
+        onclick: () => { featPickFor(g.slot.id).spellAbility = a; rerender(); }
+      }, ABIL_NAME[a]))));
+  } else if (!g.ability) {
+    wrap.appendChild(h("div", { class: "hint warn", text:
+      "Its spellcasting ability is the score this feat raises — choose that score in the feat's own options." }));
+  }
+
+  if (g.fixed.length) {
+    wrap.appendChild(h("div", { class: "hint", text: "Always prepared" }));
+    wrap.appendChild(h("div", { class: "chip-select", style: "margin:4px 0 8px" },
+      g.fixed.map((key) => h("span", { class: "chip on", ...tooltipTrigger(() => spellPopoverHtml(SPELLS[key])) },
+        SPELLS[key].name))));
+  }
+
+  g.picks.forEach((p) => {
+    wrap.appendChild(h("div", { class: "hint", text: `${p.label} — choose ${p.count}` }));
+    wrap.appendChild(h("div", { class: "chip-select", style: "margin-top:4px" },
+      p.pool.map((key) => {
+        const spell = SPELLS[key];
+        const on = p.chosen.includes(key);
+        const dupe = !on && known.has(key);
+        const full = !on && p.chosen.length >= p.count;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+          type: "button", disabled: full,
+          title: dupe ? "You already know this from another source" : null,
+          ...tooltipTrigger(() => spellPopoverHtml(spell)),
+          onclick: () => {
+            const pick = featPickFor(g.slot.id);
+            pick.spellPicks = { ...(pick.spellPicks || {}) };
+            pick.spellPicks[p.id] = on ? p.chosen.filter((k) => k !== key) : [...p.chosen, key];
+            rerender();
+          }
+        }, spell.name);
+      })));
+    wrap.appendChild(h("div", { class: "hint", text: `${p.chosen.length} of ${p.count} chosen.` }));
+  });
+  return wrap;
+}
+
+/* Grants nothing else claimed, in their own box, labelled by level. */
+function leftoverGrantsBox(filter) {
+  const left = R.featSpellGrants(state).filter((g) => !renderedGrants.has(g.slot.id) && (!filter || filter(g)));
+  if (!left.length) return null;
+  const box = h("fieldset", {}, h("legend", { text: "Spells from feats" }));
+  left.sort((a, b) => (a.slot.charLevel || 0) - (b.slot.charLevel || 0)).forEach((g) => {
+    box.appendChild(h("div", { class: "spell-level-head" },
+      h("span", { text: `Level ${g.slot.charLevel || 1}${g.slot.classKey ? ` — ${CLASSES[g.slot.classKey].name} ${g.slot.classLevel}` : ""}` })));
+    box.appendChild(featSpellGrantBlock(g));
+  });
+  return box;
 }
 
 /* Cantrips: flat, freely reassignable, capped at the current count — every
@@ -1527,7 +1630,8 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
   w.growth.forEach((row) => {
     const startIndex = runningTotal;
     runningTotal = row.target;
-    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1)) return;
+    const grants = grantsAt(w.classIndex, row.level);
+    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length)) return;
 
     const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
     section.appendChild(h("div", { class: "spell-level-head" },
@@ -1537,7 +1641,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
 
     const upToHere = list.slice(0, startIndex);
     const newSlice = list.slice(startIndex, row.target);
-    section.appendChild(h("div", { class: "chip-select" },
+    if (row.newCount > 0 || row.level === 1) section.appendChild(h("div", { class: "chip-select" },
       row.pool.map((key) => {
         const spell = SPELLS[key];
         const alreadyElsewhere = upToHere.includes(key);
@@ -1563,6 +1667,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     if (w.swapOnLevel && row.level > 1 && list.length >= row.target) {
       section.appendChild(swapControl(w, list, startIndex));
     }
+    grants.forEach((g) => section.appendChild(featSpellGrantBlock(g)));
 
     wrap.appendChild(section);
   });
@@ -1834,7 +1939,8 @@ function spellBox() {
   const allowances = R.spellAllowances(state);
   const slots = R.spellSlots(state);
   const pact = R.pactMagic(state);
-  if (!allowances.length) return null;
+  const grants = R.featSpellGrants(state);
+  if (!allowances.length && !grants.length) return null;
 
   return h("div", { class: "ps-box" },
     h("h4", { text: "Spellcasting" }),
@@ -1851,8 +1957,23 @@ function spellBox() {
       h("span", { class: "ps-slot", text: `Pact Magic: ${pact.slots} × level ${pact.level}` })) : null,
     R.isMulticlass(state) && slots.length ? h("div", { class: "ps-note", text:
       `Slots from a combined caster level of ${R.casterLevel(state)}.` + (pact ? " Pact Magic is tracked separately." : "") }) : null,
-    ...R.spellWork(state).map((w) => spellNameList(w))
+    ...R.spellWork(state).map((w) => spellNameList(w)),
+    ...grants.map((g) => featSpellNameList(g))
   );
+}
+
+/* A feat's spells on the sheet: fixed ones plus what was picked, with the
+   DC and attack bonus from the ability that feat uses. */
+function featSpellNameList(g) {
+  const keys = [...g.fixed, ...g.picks.flatMap((p) => p.chosen)];
+  if (!keys.length) return null;
+  const names = [];
+  keys.forEach((key, i) => { if (i > 0) names.push(", "); names.push(spellNameEl(key)); });
+  const dc = g.ability ? ` · DC ${R.spellSaveDC(state, g.ability)}, atk ${R.fmtMod(R.spellAttackBonus(state, g.ability))} (${ABIL_ABBR[g.ability]})` : "";
+  return h("div", { class: "ps-spelllist", style: "margin-top:8px" },
+    h("div", { class: "pss-group" },
+      h("div", { class: "pss-head", text: `${g.feat.name}${dc}` }),
+      names));
 }
 
 /* The actual chosen spell names for one caster entry, grouped by level, with
@@ -2154,6 +2275,12 @@ function buildLevelUpChoose(panel) {
     .forEach((slot) => panel.appendChild(featSlotBlock(slot)));
 
   levelUpSpellBlocks(before, index, lvl).forEach((node) => panel.appendChild(node));
+  /* A feat taken this level whose spells no spell block above showed (the
+     class doesn't cast, or prepares from its whole list), plus any older
+     feat whose spells are still unpicked. */
+  const featSpells = leftoverGrantsBox((g) =>
+    (g.anchorIndex === index && g.anchorLevel === lvl) || R.featSpellIssues(g).length > 0);
+  if (featSpells) panel.appendChild(featSpells);
 
   const issues = levelUpIssues();
   if (issues.length) {
@@ -2235,7 +2362,7 @@ function levelUpSpellBlocks(before, index, lvl) {
     const list = (w.permanentList || []).filter(Boolean);
     const row = w.growth.find((r) => r.level === lvl);
     if (list.length < prevTarget) { wrap.appendChild(permanentGrowthWalkthrough(w)); shown = true; }
-    else if (row && (row.newCount > 0 || w.swapOnLevel)) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
+    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length)) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
   }
 
   const prepared = (w.pick.prepared || []).filter(Boolean);

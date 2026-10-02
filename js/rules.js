@@ -648,6 +648,82 @@ export function spellStepIssues(state) {
       }
     }
   });
+  featSpellGrants(state).forEach((g) => issues.push(...featSpellIssues(g)));
+  return issues;
+}
+
+/* ---------------- Spells granted by feats ----------------
+
+   Feats with a `grantsSpells` block (Magic Initiate, Fey-Touched,
+   Shadow-Touched, Ritual Caster, Telepathic, Telekinetic) hand out fixed
+   spells and/or a choice of spells. The choices live on the feat's own pick,
+   featPicks[slotId].spellPicks[pickId], so changing the feat clears them.
+
+   Each grant is anchored to the class level whose slot took the feat (an
+   Origin feat anchors to the starting class at level 1), so the Spells step
+   can show it beside that level's own spell picks. */
+export function featSpellGrants(state) {
+  const out = [];
+  const picks = state.featPicks || {};
+  const pb = profBonus(totalLevel(state));
+  featSlots(state).forEach((slot) => {
+    const featKey = slot.fixedFeat || (picks[slot.id] && picks[slot.id].featKey);
+    const feat = featKey ? FEATS[featKey] : null;
+    if (!feat || !feat.grantsSpells) return;
+    const g = feat.grantsSpells;
+    const pick = picks[slot.id] || {};
+    const chosen = pick.spellPicks || {};
+
+    let ability = null;
+    if (g.abilityFrom === "choice") ability = pick.spellAbility || null;
+    else ability = Object.keys(pick.abilityBumps || {}).find((a) => pick.abilityBumps[a] > 0) || null;
+
+    out.push({
+      slot, featKey, feat,
+      anchorIndex: slot.classIndex != null ? slot.classIndex : 0,
+      anchorLevel: slot.classLevel != null ? slot.classLevel : 1,
+      abilityFrom: g.abilityFrom,
+      ability,
+      fixed: g.fixed || [],
+      picks: (g.picks || []).map((p) => {
+        const pool = featSpellPool(p);
+        return {
+          ...p,
+          count: p.count === "pb" ? pb : p.count,
+          pool,
+          /* Only what's still valid — a background swap can change the list. */
+          chosen: (chosen[p.id] || []).filter((k) => pool.includes(k))
+        };
+      })
+    });
+  });
+  return out;
+}
+
+/* Any class list unless the pick names one; narrowed by school or the
+   Ritual tag where the feat says so. */
+function featSpellPool(p) {
+  return Object.keys(SPELLS)
+    .filter((k) => {
+      const s = SPELLS[k];
+      if (s.level !== p.level) return false;
+      if (p.list && !s.classes.includes(p.list)) return false;
+      if (p.schools && !p.schools.includes(s.school)) return false;
+      if (p.ritual && !/Ritual/.test(s.time || "")) return false;
+      return true;
+    })
+    .sort((a, b) => SPELLS[a].name.localeCompare(SPELLS[b].name));
+}
+
+export function featSpellIssues(grant) {
+  const issues = [];
+  const where = `${grant.feat.name} (${grant.slot.classKey ? grant.slot.label : grant.slot.source})`;
+  if (grant.abilityFrom === "choice" && !grant.ability) issues.push(`${where}: choose a spellcasting ability.`);
+  grant.picks.forEach((p) => {
+    if (p.chosen.length !== p.count) {
+      issues.push(`${where}: choose ${p.count} ${p.level === 0 ? "cantrip" : "spell"}${p.count === 1 ? "" : "s"} (${p.chosen.length} chosen).`);
+    }
+  });
   return issues;
 }
 
@@ -659,6 +735,10 @@ export function allKnownSpellKeys(state) {
   Object.values(state.spellPicks || {}).forEach((p) => {
     [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || []), ...(p.extra || [])]
       .filter(Boolean).forEach((k) => set.add(k));
+  });
+  featSpellGrants(state).forEach((g) => {
+    g.fixed.forEach((k) => set.add(k));
+    g.picks.forEach((p) => p.chosen.forEach((k) => set.add(k)));
   });
   return set;
 }
