@@ -663,6 +663,39 @@ half damage).
   spells by level 1-9; Teleport/Confusion/Fireball/Summon Undead tooltips
   render correctly; no console errors.
 
+### Done — validation against the PHB and dnd2024.wikidot.com
+
+Scripts in `tools/`; wikidot pages are fetched with curl (`spell:all`, then
+one `spell:<slug>` page each, 0.4 s apart; some possessives slug as
+"melfs-…", others as "leomund-s-…").
+- `phb-presence-check.pl phb8.txt js/data/spells.js` — independent of the
+  parser (uses the layout extract): 391 chapter-7 description headers, all
+  ours with matching levels; all 391 of ours appear on a class spell table.
+- `wikidot-check.pl all.html js/data/spells.js` — all 391 found on wikidot
+  (which has 456: the 65 extra are other books, fine). Level, school, class
+  lists, casting time, range, duration match for every spell. Components
+  match; the 10 cost-marker disagreements are wikidot's, confirmed in the
+  PHB (Acid Splash marked costly, Find the Path marked consumed, Gentle
+  Repose's consumed 2 CP not marked, cheap costs like Guards and Wards'
+  10 GP unmarked). Befuddlement's "Instantanous" is a wikidot typo.
+- `wikidot-text-check.pl <pages> js/data/spells.js` — word-level LCS diff of
+  every description: 360/391 identical. The rest: our readable rewrites of
+  7 tables + 2 PHB typos fixed (expected), stat-block formatting (AC vs
+  Armor Class; `statblock-number-check.pl` confirms every number matches,
+  except Animate Objects' CHA 1 (−5), where wikidot's "−1" is wrong), and
+  the errata group below.
+- **Real bugs this found and fixed**: the parser's caption filter was
+  deleting all-caps stat-block rows ("STR 13 DEX 16 CON 14") from all 12
+  summon/animate stat blocks; page-header timestamps start with a form feed
+  (now stripped); another dropped ligature ("rst" anywhere → "first", Word of
+  Recall); six dropped hyphens ("40foot" → "40-foot").
+- **Errata group (decision pending with the user)**: wikidot reflects later
+  official errata that the user's 9/8/24 PHB printing predates — Conjure
+  Minor Elementals and Conjure Elemental upcast 1d8 (PHB 2d8), Conjure Fey
+  1d12 (PHB 2d12), Sorcerous Burst "ranged spell attack" (PHB "ranged attack
+  roll"), and reworded Temporary Hit Points clauses in Animal Shapes,
+  Polymorph, True Polymorph and Shapechange. Currently the PHB text stands.
+
 **Gap noticed, not built**: Warlock Mystic Arcanum (`mysticArcanum` in
 warlock.js: one level 6/7/8/9 spell at Warlock 11/13/15/17) has data but no
 picker — Pact Magic caps the Warlock pool at level 5, so those spells can't

@@ -135,9 +135,10 @@ my %DAMAGE = (
 sub fixText {
   my $t = shift // '';
   $t =~ s/\s*\x{2191}\s*[A-Z' ]*$//;                       # trailing art arrows / captions
-  $t =~ s/\bthe rst\b/the first/g;                          # dropped "fi" ligature
+  $t =~ s/\brst\b/first/g;                                  # dropped "fi" ligature
   $t =~ s/\beff ects\b/effects/g;                           # dropped "ff" ligature
   $t =~ s/\bup to ve\b/up to five/g;                        # dropped "fi" ligature
+  $t =~ s/\b(\d+)foot\b/$1-foot/g;                          # dropped hyphen ("40foot Cube")
   $t =~ s/\bthe spells ends\b/the spell ends/g;             # PDF typo
   $t =~ s/level about (\d)/level above $1/g;                # PDF typo
   $t =~ s/Omens Omen Weal Woe Weal and woe Indifference For Results That Will Be\.\.\. Good Bad Good and bad Neither good nor bad/Omens: Weal (results will be good), Woe (bad), Weal and woe (good and bad), or Indifference (neither good nor bad)./;

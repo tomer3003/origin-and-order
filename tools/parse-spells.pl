@@ -20,7 +20,8 @@ my @clean;
 for my $l (@lines[$start..$#lines]) {
   next if $l =~ m{^https://www\.dndbeyond\.com};
   next if $l =~ m{^\d+/803\s*$};
-  next if $l =~ m{^\d+/\d+/\d+, \d+:\d+ [AP]M};
+  $l =~ s/^\f+//;                                     # page breaks start the next line
+  next if $l =~ m{^\d+/\d+/\d+, \d+:\d+\s*[AP]M};   # page-header timestamp
   next if $l =~ /^Player.s Handbook\s*$/;
   $l =~ s/\s*Player\x{2019}s Handbook\s*/ /g;
   $l =~ s/\s*Player's Handbook\s*$//;
@@ -29,7 +30,9 @@ for my $l (@lines[$start..$#lines]) {
   next if $l =~ /ARTIST:/;
   next if $l =~ /^\s*$/;
   # All-caps art captions.
-  next if length($l) > 15 && $l !~ /[a-z]/;
+  # (Captions never contain digits; stat-block rows like "STR 13 DEX 16
+  # CON 14" are also all caps and must be kept.)
+  next if length($l) > 15 && $l !~ /[a-z]/ && $l !~ /\d/;
   push @clean, $l;
 }
 
