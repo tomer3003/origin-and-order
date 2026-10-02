@@ -1583,6 +1583,41 @@ function leftoverGrantsBox(filter) {
   return box;
 }
 
+/* Spell chips grouped under a "Level N" heading per spell level, cantrips
+   first, names alphabetical within each. A pool that only spans one level
+   stays a single row with no heading. */
+function spellLevelLabel(level) { return level === 0 ? "Cantrips" : `Level ${level}`; }
+
+function spellsByLevel(keys) {
+  const groups = new Map();
+  keys.forEach((k) => {
+    const lvl = SPELLS[k].level;
+    if (!groups.has(lvl)) groups.set(lvl, []);
+    groups.get(lvl).push(k);
+  });
+  return [...groups.keys()].sort((a, b) => a - b).map((lvl) => ({
+    level: lvl,
+    keys: groups.get(lvl).sort((a, b) => SPELLS[a].name.localeCompare(SPELLS[b].name))
+  }));
+}
+
+function spellChipGroups(keys, chipFor) {
+  const groups = spellsByLevel(keys);
+  if (groups.length <= 1) {
+    return h("div", { class: "chip-select", style: "margin-top:4px" }, groups.flatMap((g) => g.keys.map(chipFor)));
+  }
+  return h("div", { class: "spell-level-groups" },
+    groups.map((g) => h("div", { class: "spell-level-group" },
+      h("div", { class: "spell-level-label", text: `${spellLevelLabel(g.level)} · ${g.keys.length}` }),
+      h("div", { class: "chip-select" }, g.keys.map(chipFor)))));
+}
+
+/* The same grouping for a <select>. */
+function spellOptionGroups(keys) {
+  return spellsByLevel(keys).map((g) => h("optgroup", { label: spellLevelLabel(g.level) },
+    g.keys.map((key) => h("option", { value: key }, SPELLS[key].name))));
+}
+
 /* Cantrips: flat, freely reassignable, capped at the current count — every
    class that has them lets you swap on a Long Rest anyway, so a level-walked
    history would be more bookkeeping than the rule actually needs. */
@@ -1641,8 +1676,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
 
     const upToHere = list.slice(0, startIndex);
     const newSlice = list.slice(startIndex, row.target);
-    if (row.newCount > 0 || row.level === 1) section.appendChild(h("div", { class: "chip-select" },
-      row.pool.map((key) => {
+    if (row.newCount > 0 || row.level === 1) section.appendChild(spellChipGroups(row.pool, (key) => {
         const spell = SPELLS[key];
         const alreadyElsewhere = upToHere.includes(key);
         const on = newSlice.includes(key);
@@ -1661,8 +1695,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
             rerender();
           }
         }, spell.name);
-      })
-    ));
+    }));
 
     if (w.swapOnLevel && row.level > 1 && list.length >= row.target) {
       section.appendChild(swapControl(w, list, startIndex));
@@ -1685,11 +1718,11 @@ function swapControl(w, list, upToIndex) {
   const learnedBeforeThisLevel = list.slice(0, upToIndex);
   const outSel = h("select", { "aria-label": "Spell to replace" },
     h("option", { value: "" }, "— optionally replace a known spell —"),
-    learnedBeforeThisLevel.map((key) => h("option", { value: key }, SPELLS[key].name))
+    spellOptionGroups(learnedBeforeThisLevel)
   );
   const inSel = h("select", { "aria-label": "New spell" },
     h("option", { value: "" }, "— with —"),
-    w.pool.filter((k) => !list.includes(k)).map((key) => h("option", { value: key }, SPELLS[key].name))
+    spellOptionGroups(w.pool.filter((k) => !list.includes(k)))
   );
   return h("div", { class: "optrow", style: "margin-top:6px" },
     outSel, inSel,
@@ -1718,23 +1751,21 @@ function copiedSpellPicker(w) {
     h("h4", { text: "Spells learned another way" }),
     h("div", { class: "hint", text:
       "Spells copied into your spellbook from a scroll or another spellbook — a free choice from the full list, with no cap and no swap." }),
-    h("div", { class: "chip-select", style: "margin-top:4px" },
-      w.pool.map((key) => {
-        const spell = SPELLS[key];
-        const on = chosen.includes(key);
-        const dupe = !on && known.has(key);
-        return h("button", {
-          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}`,
-          type: "button",
-          title: dupe ? "You already know this from another source" : null,
-          ...tooltipTrigger(() => spellPopoverHtml(spell)),
-          onclick: () => {
-            w.pick.extra = on ? chosen.filter((k) => k !== key) : [...chosen, key];
-            rerender();
-          }
-        }, spell.name);
-      })
-    ),
+    spellChipGroups(w.pool, (key) => {
+      const spell = SPELLS[key];
+      const on = chosen.includes(key);
+      const dupe = !on && known.has(key);
+      return h("button", {
+        class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}`,
+        type: "button",
+        title: dupe ? "You already know this from another source" : null,
+        ...tooltipTrigger(() => spellPopoverHtml(spell)),
+        onclick: () => {
+          w.pick.extra = on ? chosen.filter((k) => k !== key) : [...chosen, key];
+          rerender();
+        }
+      }, spell.name);
+    }),
     h("div", { class: "hint", text: chosen.length ? `${chosen.length} copied.` : "None copied yet." })
   );
 }
@@ -1749,8 +1780,7 @@ function flatSpellPicker(w, pickKey, pool, target, label, hint) {
     h("div", { class: "hint", text: label })
   );
   if (hint) wrap.appendChild(h("div", { class: "hint", text: hint }));
-  wrap.appendChild(h("div", { class: "chip-select", style: "margin-top:4px" },
-    pool.map((key) => {
+  wrap.appendChild(spellChipGroups(pool, (key) => {
       const spell = SPELLS[key];
       const on = chosen.includes(key);
       const dupe = !on && known.has(key);
@@ -1765,8 +1795,7 @@ function flatSpellPicker(w, pickKey, pool, target, label, hint) {
           rerender();
         }
       }, spell.name);
-    })
-  ));
+  }));
   wrap.appendChild(h("div", { class: "hint", text: `${chosen.length} of ${target} chosen.` }));
   return wrap;
 }
