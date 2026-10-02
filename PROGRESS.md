@@ -52,6 +52,10 @@ at all — this is purely a local-testing workaround.
   quoted rules text. Keep that voice for every new class, spell, and feat.
 - Where the PHB and the SRD mirror disagree, the **PHB wins** (the SRD
   sometimes simplifies). Known instance: Ranger level-1 spell slots = 2.
+- **Source priority (user's instruction): PHB PDF > http://dnd2024.wikidot.com/
+  > SRD mirror.** The wikidot site covers the 2024 rules per class/spell/feat
+  and is the first fallback when the PDF extract is ambiguous (column-shifted
+  tables, etc.); the SRD is last.
 - **The user's own PHB 2024 PDF** is at
   `C:\Users\Owner\Downloads\SKT1\DnD Beyond Player’s Handbook 2024.pdf`.
   Scratchpad extracts don't survive between sessions, so re-extract with
@@ -159,7 +163,7 @@ The live site was confirmed serving the modular app with a clean console,
 and the layout has no horizontal overflow at 375 px.
 
 ### In progress
-- Phase C's remaining item: post-creation single-step levelling. See below.
+- Nothing. Phase C is complete; next up is Phase D (spell levels 2-9 first).
 
 ### Done — Phase A: breadth first (all seven items)
 
@@ -494,15 +498,60 @@ Two more pieces of user feedback after the PHB spell rebuild:
    confirmed all four of its growth-row chips correctly flipped to the
    "already known" dupe style without being blocked.
 
-### Mostly done — Phase C: persistence and output
+### Done — Phase C: persistence and output
 Multiple saved characters (requirement 11), JSON export/import
 (requirement 10) and the printable sheet (requirement 15) all landed with
-`app.js` — our own layout, never Wizards' artwork or template. **Still to
-do: the post-creation single-step levelling mode** (requirement 10), i.e.
-open a saved character and add one level at a time, answering only the
-choices that new level actually triggers rather than walking all eight steps.
-`R.levelLog()` and the stable `classIndex:classLevel` feat slot ids were
-designed for exactly this, so the data layer is ready for it.
+`app.js` — our own layout, never Wizards' artwork or template.
+
+**Single-step levelling (requirement 10) is done.** Entry points: a
+"Level up to N" button on the Character Sheet step, and a "Level up" button
+per character in the Saved characters list. It's the "Single-step
+levelling" section of `app.js`:
+- `state.levelUp` holds the mode (`phase: "pick"` → choose the class,
+  existing or a new multiclass; `phase: "choose"` → answer that level).
+  It carries a JSON `snapshot` of the pre-level character: Cancel restores
+  it, "Different class" undoes and re-picks, and the "New at X N" summary
+  diffs against it (features gained, proficiency bonus, spell slots,
+  per-class resource counters). It's persisted in the draft, so a refresh
+  mid-level-up resumes; `saveCharacter` strips it and `doSave` refuses while
+  it's open. Finish auto-saves if the character already has an id.
+- Only that level's asks are shown: its HP row (+ "take the average"),
+  skills for a new multiclass entry, Expertise if the owed count rose,
+  class choices due/pending, subclass at 3, the feat slot `index:level`
+  plus any feat slot still owed, and for spells just that class's block:
+  cantrips if the count changed, `permanentGrowthWalkthrough(w, onlyLevel)`
+  for this level's row and swap (falls back to the full walkthrough if
+  earlier rows are short), the prepared picker for free/spellbook modes.
+  Finish is gated on class/hp/feats/spells issues being empty.
+- **`state.levelOrder` (new)**: real chronological level history, one class
+  key per level. `R.levelLog()` reconciles it against `classes` (drops
+  surplus, appends unaccounted levels grouped by class, forces the starting
+  class onto character level 1), so builder edits can never desync it and
+  characters without it behave exactly as before. This was necessary, not
+  cosmetic: hpRolls are keyed by character level, so levelling Fighter 3 /
+  Wizard 2 into Fighter 4 under the old grouped order would have shifted the
+  Wizard's rolls onto different rows. Verified: that exact build lands
+  Fighter 4 on character level 7 with every earlier roll intact.
+- Multiclass prerequisites (`R.multiclassPrereqIssues`, 13+ in each class's
+  primary ability, parsing "or"/"and" from `primary`) are shown as warnings,
+  not blocks.
+- **Pre-existing bug fixed along the way**: every multiclass entry was
+  asked for the class's full starting skill count. 2024 multiclassing grants
+  one skill for Bard/Ranger/Rogue (`multiclassSkillCount: 1` in their data)
+  and none otherwise; `R.skillCountFor()` now drives both the picker and
+  validation, and `migrate()` trims the surplus from older saves.
+
+Verified live: Fighter 3 / Wizard 2 → Wizard 3 (subclass, +2 spellbook,
+slots L1×3 → L1×4 L2×2, HP 45 → 52) → Fighter 4 (ASI, char level 7) →
+Rogue 1 (1 skill + Expertise, Stealth +7, HP 69); Cancel restores exactly;
+refresh mid-level-up resumes; Sorcerer 1 → 2 showed only the level-2 row
+and its swap offered only previously known spells; Sorcerer 2 → Cleric 1
+showed Divine Order, cantrips, prepared spells and the combined slots.
+No console errors; no horizontal overflow at 375 px.
+
+Known limit: removing a non-last class in the builder still shifts
+`featPicks`/`spellPicks` keyed by class index (pre-existing, unrelated to
+levelling).
 
 ### Then — Phase D: depth
 Spell levels 2-9 (see the Phase B coverage note above), full subclass

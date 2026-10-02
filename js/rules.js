@@ -48,22 +48,70 @@ export function availableClassKeys(state) {
 /* Character levels in the order they were gained, each tagged with the class
    it was taken in. Character level N is index N-1.
 
-   With the class + level-count UI the order is simply: all of the first
-   class's levels, then all of the second's, and so on. */
+   state.levelOrder is the real chronological history (one class key per
+   level taken), written by the single-step level-up mode. A character built
+   purely with the class + level-count UI has no history, so any levels it
+   doesn't account for are appended grouped by class: all of the first
+   class's, then all of the second's. The history is reconciled rather than
+   trusted — a builder edit that drops a class's levels just discards that
+   class's latest entries — so it can never disagree with `classes`.
+
+   This matters because hpRolls is keyed by character level: levelling a
+   Fighter 3 / Wizard 2 up to Fighter 4 must make the new level character
+   level 6, not shift the Wizard's two rolls onto different rows. */
 export function levelLog(state) {
-  const out = [];
-  classEntries(state).forEach((entry, classIndex) => {
-    for (let classLevel = 1; classLevel <= (entry.levels || 0); classLevel++) {
-      out.push({
-        charLevel: out.length + 1,
-        classIndex,
-        classKey: entry.key,
-        classLevel,
-        hitDie: CLASSES[entry.key].hitDie
-      });
-    }
+  const entries = classEntries(state);
+  const left = new Map(entries.map((e) => [e.key, e.levels || 0]));
+  const order = [];
+  (state.levelOrder || []).forEach((key) => {
+    if ((left.get(key) || 0) > 0) { order.push(key); left.set(key, left.get(key) - 1); }
   });
-  return out;
+  entries.forEach((e) => { for (let n = left.get(e.key); n > 0; n--) order.push(e.key); });
+
+  /* Character level 1 always belongs to the starting class. */
+  if (entries.length && order[0] !== entries[0].key) {
+    order.splice(order.indexOf(entries[0].key), 1);
+    order.unshift(entries[0].key);
+  }
+
+  const indexOf = new Map(entries.map((e, i) => [e.key, i]));
+  const seen = {};
+  return order.map((key, i) => {
+    seen[key] = (seen[key] || 0) + 1;
+    return {
+      charLevel: i + 1,
+      classIndex: indexOf.get(key),
+      classKey: key,
+      classLevel: seen[key],
+      hitDie: CLASSES[key].hitDie
+    };
+  });
+}
+
+/* Skill proficiencies a class entry grants. The starting class gives its
+   full count; multiclassing in gives only what the class's multiclass
+   table lists (one skill for Bard, Ranger and Rogue, none otherwise). */
+export function skillCountFor(state, entry) {
+  const cls = CLASSES[entry.key];
+  return classEntries(state)[0] === entry ? cls.skillCount : (cls.multiclassSkillCount || 0);
+}
+
+/* 2024 multiclassing prerequisite: 13+ in the primary ability of every
+   class you have AND the one you're adding. "Strength or Dexterity" needs
+   either; "Dexterity and Wisdom" needs both. Returned as warnings — a DM can
+   waive it, so the UI shows these rather than blocking. */
+export function multiclassPrereqIssues(state, newKey) {
+  const scores = finalAbilities(state);
+  const keys = [...new Set([...classEntries(state).map((e) => e.key), newKey])];
+  const issues = [];
+  keys.forEach((key) => {
+    const cls = CLASSES[key];
+    const abils = ABILS.filter((a) => cls.primary.includes(ABIL_NAME[a]));
+    const needAll = / and /.test(cls.primary);
+    const ok = needAll ? abils.every((a) => scores[a] >= 13) : abils.some((a) => scores[a] >= 13);
+    if (!ok) issues.push(`${cls.name} needs ${cls.primary} of 13 or higher.`);
+  });
+  return issues;
 }
 
 /* ---------------- Ability scores ---------------- */
@@ -898,9 +946,10 @@ export function classStepIssues(state) {
 
   entries.forEach((entry) => {
     const cls = CLASSES[entry.key];
-    const want = cls.skillCount;
+    const want = skillCountFor(state, entry);
     const got = (entry.skills || []).length;
-    if (got !== want) issues.push(`${cls.name}: choose ${want} skill${want === 1 ? "" : "s"} (${got} chosen).`);
+    if (got !== want) issues.push(want === 0
+      ? `${cls.name}: multiclassing in grants no skills — deselect ${got}.` :`${cls.name}: choose ${want} skill${want === 1 ? "" : "s"} (${got} chosen).`);
     if (!entry.equipment) issues.push(`${cls.name}: choose a starting equipment option.`);
     const expWant = expertiseOwed(entry);
     const expGot = (entry.expertise || []).length;

@@ -11,6 +11,7 @@ export const ranger = {
   hitDie: 10,
   saves: ["str", "dex"],
   skillCount: 3,
+  multiclassSkillCount: 1,
   skillOptions: ["animalHandling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
   weaponProf: "Simple and Martial weapons",
   armorTraining: "Light and Medium armor, and Shields",

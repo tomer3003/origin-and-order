@@ -24,7 +24,7 @@ import { SPELLS } from "./data/spells.js";
 import * as R from "./rules.js";
 import { STEPS, STEP_LABEL, defaultState, newClassEntry, loadDraft, saveDraft,
          clearDraft, loadIndex, saveCharacter, loadCharacter, deleteCharacter,
-         exportCharacter, parseImported } from "./state.js";
+         exportCharacter, parseImported, migrate } from "./state.js";
 
 let state = loadDraft();
 
@@ -317,7 +317,13 @@ function furthestUnlocked() {
 /* ---------------- Tracker ---------------- */
 
 function renderTracker() {
-  swapChildren(byId("tracker"), buildTracker);
+  swapChildren(byId("tracker"), (host) => {
+    if (!state.levelUp) { buildTracker(host); return; }
+    const target = R.totalLevel(state) + (state.levelUp.phase === "pick" ? 1 : 0);
+    host.appendChild(h("span", { class: "tstep active" },
+      h("span", { class: "step-num", text: "↑" }),
+      h("span", { class: "tstep-label", text: `Levelling up to ${target}` })));
+  });
 }
 
 function buildTracker(host) {
@@ -356,6 +362,7 @@ const BUILDERS = {
 
 function renderStepPanel() {
   swapChildren(byId("stepPanel"), (panel) => {
+    if (state.levelUp) { buildLevelUpPanel(panel); return; }
     const key = STEPS[state.step];
     BUILDERS[key](panel);
     panel.appendChild(navRow(key));
@@ -564,7 +571,7 @@ function classDetail(entry, index) {
       `Multiclassing into ${cls.name} grants only: ${cls.multiclassGrants}.` }));
   }
 
-  wrap.appendChild(skillFieldset(entry, cls));
+  if (R.skillCountFor(state, entry) || (entry.skills || []).length) wrap.appendChild(skillFieldset(entry, cls));
   if (R.expertiseOwed(entry)) wrap.appendChild(expertiseFieldset(entry, cls));
   if (index === 0) wrap.appendChild(equipmentFieldset(entry, cls));
   else if (!entry.equipment) entry.equipment = (cls.equipment[0] || {}).key || null;
@@ -586,15 +593,16 @@ function kv(k, v) {
 function skillFieldset(entry, cls) {
   const options = cls.skillOptions === "any" ? ALL_SKILL_KEYS : cls.skillOptions;
   const chosen = entry.skills || [];
+  const want = R.skillCountFor(state, entry);
   const fromElsewhere = skillsFromOtherSources(entry);
 
   return h("fieldset", {},
-    h("legend", { text: `Skills — choose ${cls.skillCount}` }),
+    h("legend", { text: `Skills — choose ${want}` }),
     h("div", { class: "chip-select" },
       options.map((sk) => {
         const on = chosen.includes(sk);
         const dupe = !on && fromElsewhere.has(sk);
-        const full = !on && chosen.length >= cls.skillCount;
+        const full = !on && chosen.length >= want;
         return h("button", {
           class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
           type: "button",
@@ -602,13 +610,13 @@ function skillFieldset(entry, cls) {
           title: dupe ? "You already have this from another source" : null,
           onclick: () => {
             if (on) entry.skills = chosen.filter((s) => s !== sk);
-            else if (chosen.length < cls.skillCount) entry.skills = [...chosen, sk];
+            else if (chosen.length < want) entry.skills = [...chosen, sk];
             rerender();
           }
         }, SKILLS[sk].name);
       })
     ),
-    h("div", { class: "hint", text: `${chosen.length} of ${cls.skillCount} chosen. Dashed outlines mark skills you already have elsewhere — picking one wastes it.` })
+    h("div", { class: "hint", text: `${chosen.length} of ${want} chosen. Dashed outlines mark skills you already have elsewhere — picking one wastes it.` })
   );
 }
 
@@ -1505,7 +1513,9 @@ function cantripPicker(w) {
 /* The BG3-style level-by-level walkthrough for "list" and "spellbook" modes:
    one section per class level reached, each showing how many NEW spells are
    owed at that level and, for swap-capable classes, one optional swap. */
-function permanentGrowthWalkthrough(w) {
+/* `onlyLevel` limits it to one class level's row (the level-up mode), and
+   shows that row even when it adds no spells, since its swap still applies. */
+function permanentGrowthWalkthrough(w, onlyLevel) {
   const list = (w.pick[w.permanentKey] || []).filter(Boolean);
   const known = R.allKnownSpellKeys(state);
   const label = w.permanentKey === "spellbook" ? "Spellbook" : "Known spells";
@@ -1517,7 +1527,7 @@ function permanentGrowthWalkthrough(w) {
   w.growth.forEach((row) => {
     const startIndex = runningTotal;
     runningTotal = row.target;
-    if (row.newCount === 0 && row.level !== 1) return;
+    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1)) return;
 
     const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
     section.appendChild(h("div", { class: "spell-level-head" },
@@ -1715,7 +1725,9 @@ function buildSheetStep(panel) {
   panel.appendChild(h("div", { class: "hp-actions noprint" },
     h("button", { class: "btn small", type: "button", onclick: () => window.print() }, "Print"),
     h("button", { class: "btn small", type: "button", onclick: () => doSave() }, "Save character"),
-    h("button", { class: "btn small", type: "button", onclick: () => exportCharacter(state) }, "Export JSON")
+    h("button", { class: "btn small", type: "button", onclick: () => exportCharacter(state) }, "Export JSON"),
+    canLevelUp() ? h("button", { class: "btn small primary", type: "button", onclick: startLevelUp },
+      `Level up to ${R.totalLevel(state) + 1}`) : null
   ));
   panel.appendChild(printSheet());
 }
@@ -1947,6 +1959,303 @@ function equipmentText() {
 }
 
 /* =======================================================================
+   Single-step levelling (requirement 10)
+
+   Open a finished character and add ONE level, answering only what that
+   level asks for instead of walking all nine steps again. Two phases, held
+   in state.levelUp so a page refresh mid-level-up resumes where it was:
+
+     { phase: "pick", snapshot }                   choose which class gains it
+     { phase: "choose", classKey, snapshot }       answer that level's choices
+
+   `snapshot` is the character as it was before the level, as JSON — Cancel
+   restores it, and the "what changed" summary diffs against it. Saving is
+   refused while a level-up is open so a half-answered level never lands in
+   the saved-characters list.
+   ======================================================================= */
+
+function canLevelUp() {
+  const total = R.totalLevel(state);
+  return total >= 1 && total < R.MAX_LEVEL;
+}
+
+function startLevelUp() {
+  if (!canLevelUp()) return;
+  const { levelUp, ...rest } = state;
+  state.levelUp = { phase: "pick", snapshot: JSON.stringify(rest) };
+  goToStep(STEPS.length - 1);
+}
+
+function levelUpBefore() {
+  return migrate(JSON.parse(state.levelUp.snapshot));
+}
+
+function cancelLevelUp() {
+  const restored = levelUpBefore();
+  restored.levelUp = null;
+  state = restored;
+  goToStep(STEPS.length - 1);
+}
+
+/* Back from the choices to the class picker: undo the level, keep the mode. */
+function repickLevelUp() {
+  const snapshot = state.levelUp.snapshot;
+  state = levelUpBefore();
+  state.levelUp = { phase: "pick", snapshot };
+  goToStep(STEPS.length - 1);
+}
+
+function applyLevelUp(classKey) {
+  /* Pin the history down before adding to it, so earlier levels keep their
+     character-level numbers (and their HP rolls) whatever class this is. */
+  state.levelOrder = R.levelLog(state).map((l) => l.classKey);
+  let entry = state.classes.find((c) => c.key === classKey);
+  if (entry) {
+    entry.levels += 1;
+  } else {
+    entry = newClassEntry(classKey);
+    entry.equipment = (CLASSES[classKey].equipment[0] || {}).key || null;
+    state.classes.push(entry);
+  }
+  state.levelOrder.push(classKey);
+  state.levelUp = { phase: "choose", classKey, snapshot: state.levelUp.snapshot };
+  goToStep(STEPS.length - 1);
+}
+
+function finishLevelUp() {
+  if (levelUpIssues().length) return;
+  state.levelUp = null;
+  const total = R.totalLevel(state);
+  if (state.id) saveCharacter(state, summaryLine());
+  goToStep(STEPS.length - 1);
+  flash(state.id ? `Level ${total} — saved.` : `Level ${total}.`);
+}
+
+function levelUpIssues() {
+  return ["class", "hp", "feats", "spells"].flatMap((k) => stepIssues(k));
+}
+
+function buildLevelUpPanel(panel) {
+  if (state.levelUp.phase === "pick") buildLevelUpPick(panel);
+  else buildLevelUpChoose(panel);
+}
+
+function buildLevelUpPick(panel) {
+  const total = R.totalLevel(state);
+  panel.appendChild(h("h2", { text: `Level up to ${total + 1}` }));
+  panel.appendChild(h("p", { class: "lede", text:
+    "Choose which class gains the level. You'll then see only what that one level asks of you." }));
+
+  const entries = R.classEntries(state);
+  panel.appendChild(h("div", { class: "grid-cards" },
+    entries.map((entry) => {
+      const cls = CLASSES[entry.key];
+      return h("button", { class: "ccard", type: "button", onclick: () => applyLevelUp(entry.key) },
+        h("span", { class: "cname", text: `${cls.name} ${entry.levels} → ${entry.levels + 1}` }),
+        h("span", { class: "cmeta", text: levelPreview(entry.key, entry.levels + 1) }),
+        h("span", { class: "ctag", text: `d${cls.hitDie}` }));
+    })
+  ));
+
+  const others = R.availableClassKeys(state);
+  if (others.length) {
+    panel.appendChild(h("h4", { text: "Or multiclass into a new class" }));
+    panel.appendChild(h("div", { class: "grid-cards" },
+      others.map((key) => {
+        const cls = CLASSES[key];
+        const prereq = R.multiclassPrereqIssues(state, key);
+        return h("button", { class: "ccard", type: "button", onclick: () => applyLevelUp(key) },
+          h("span", { class: "cname", text: `${cls.name} 1` }),
+          h("span", { class: "cmeta", text: cls.tagline }),
+          h("span", { class: "ctag", text: `d${cls.hitDie} · ${cls.primary}` }),
+          prereq.length ? h("span", { class: "cmeta warn", text: prereq.join(" ") }) : null);
+      })
+    ));
+    panel.appendChild(h("div", { class: "hint", text:
+      "Multiclassing needs 13 or higher in the primary ability of every class you have and the new one. Classes that miss it are flagged, not blocked — your DM can waive it." }));
+  }
+
+  panel.appendChild(h("div", { class: "stepnav noprint" },
+    h("button", { class: "btn ghost", type: "button", onclick: cancelLevelUp }, "Cancel")));
+}
+
+/* One-line "what you get" for a class card: feature names at that level. */
+function levelPreview(classKey, classLevel) {
+  const cls = CLASSES[classKey];
+  const entry = R.classEntries(state).find((c) => c.key === classKey);
+  const sub = entry && entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  const names = [
+    ...(cls.features[classLevel] || []).map((f) => f.name),
+    ...(sub && sub.features && sub.features[classLevel] ? sub.features[classLevel].map((f) => f.name) : [])
+  ];
+  if ((cls.asiLevels || []).includes(classLevel)) names.push("Feat");
+  if (cls.epicBoonLevel === classLevel) names.push("Epic Boon");
+  if (classLevel === cls.subclassLevel && !(entry && entry.subclass)) names.push(cls.subclassLabel);
+  return [...new Set(names)].join(", ") || "No new features";
+}
+
+function buildLevelUpChoose(panel) {
+  const before = levelUpBefore();
+  const key = state.levelUp.classKey;
+  const index = state.classes.findIndex((c) => c.key === key);
+  const entry = state.classes[index];
+  const cls = CLASSES[key];
+  const lvl = entry.levels;
+  const total = R.totalLevel(state);
+  const isNewClass = lvl === 1;
+
+  panel.appendChild(h("h2", { text: `Level ${total}: ${cls.name} ${lvl}` }));
+  panel.appendChild(h("p", { class: "lede", text:
+    "Only the choices this level actually brings are shown. Hover a feat or spell to read it." }));
+
+  if (isNewClass) {
+    panel.appendChild(h("div", { class: "callout", text:
+      `Multiclassing into ${cls.name} grants only: ${cls.multiclassGrants}.` }));
+    const prereq = R.multiclassPrereqIssues(before, key);
+    if (prereq.length) panel.appendChild(h("div", { class: "callout warnbox", text: prereq.join(" ") }));
+  }
+
+  panel.appendChild(levelUpChanges(before, entry, cls, lvl));
+
+  /* Hit points for just this character level. */
+  const row = R.hpRows(state).find((r) => r.charLevel === total);
+  if (row && !row.fixed) {
+    const avg = Math.floor(row.hitDie / 2) + 1;
+    panel.appendChild(h("h4", { text: "Hit points" }));
+    panel.appendChild(h("table", { class: "hp-table" },
+      h("thead", {}, h("tr", {},
+        ["Level", "Class", "Die", "Roll", "CON", "Extra", "HP"].map((t) => h("th", { text: t })))),
+      h("tbody", {}, hpRow(row))));
+    panel.appendChild(h("div", { class: "hp-actions" },
+      h("button", { class: "btn small", type: "button", onclick: () => {
+        state.hpRolls[String(total)] = avg; rerender();
+      } }, `Take the average (${avg})`)));
+  }
+
+  if (isNewClass && R.skillCountFor(state, entry)) panel.appendChild(skillFieldset(entry, cls));
+
+  const expBefore = before.classes[index] ? R.expertiseOwed(before.classes[index]) : 0;
+  if (R.expertiseOwed(entry) > expBefore) panel.appendChild(expertiseFieldset(entry, cls));
+
+  /* Class choices still unanswered, plus any landing on exactly this level
+     (which stay visible after being answered so they can be changed). */
+  const pendingKeys = new Set(R.pendingClassChoices(state).filter((p) => p.index === index).map((p) => p.choice.key));
+  (cls.choices || []).filter((c) => pendingKeys.has(c.key) || c.level === lvl)
+    .forEach((choice) => panel.appendChild(choiceFieldset(entry, cls, choice)));
+
+  if (lvl === cls.subclassLevel || (!entry.subclass && lvl >= cls.subclassLevel)) {
+    panel.appendChild(subclassFieldset(entry, cls));
+  }
+
+  /* The feat slot this level grants, plus anything still owed from before. */
+  const pendingIds = new Set(R.pendingFeatSlots(state).map((s) => s.id));
+  R.featSlots(state)
+    .filter((s) => s.id === `${index}:${lvl}` || pendingIds.has(s.id))
+    .forEach((slot) => panel.appendChild(featSlotBlock(slot)));
+
+  levelUpSpellBlocks(before, index, lvl).forEach((node) => panel.appendChild(node));
+
+  const issues = levelUpIssues();
+  if (issues.length) {
+    panel.appendChild(h("ul", { class: "feat-list", style: "margin-top:10px" },
+      issues.map((t) => h("li", { class: "warn", text: t }))));
+  }
+
+  panel.appendChild(h("div", { class: "stepnav noprint" },
+    h("button", { class: "btn ghost", type: "button", onclick: cancelLevelUp }, "Cancel"),
+    h("button", { class: "btn ghost", type: "button", onclick: repickLevelUp }, "Different class"),
+    h("div", { style: "flex:1" }),
+    h("button", {
+      class: "btn primary", type: "button", disabled: issues.length > 0,
+      title: issues.length ? issues.join(" ") : null,
+      onclick: finishLevelUp
+    }, state.id ? "Finish and save" : "Finish level up")
+  ));
+}
+
+/* What the level changed that needs no decision: new features, proficiency
+   bonus, spell slots and per-level resources, each as before → after. */
+function levelUpChanges(before, entry, cls, lvl) {
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  const features = [
+    ...(cls.features[lvl] || []),
+    ...(sub && sub.features && sub.features[lvl] ? sub.features[lvl].map((f) => ({ ...f, subclass: sub.name })) : [])
+  ];
+
+  const changes = [];
+  const pbBefore = R.profBonus(R.totalLevel(before)), pbAfter = R.profBonus(R.totalLevel(state));
+  if (pbAfter !== pbBefore) changes.push(["Proficiency bonus", `${R.fmtMod(pbBefore)} → ${R.fmtMod(pbAfter)}`]);
+  const slotText = (s) => {
+    const slots = R.spellSlots(s), pact = R.pactMagic(s);
+    const bits = slots.map((n, i) => `L${i + 1}×${n}`);
+    if (pact) bits.push(`Pact ${pact.slots}×L${pact.level}`);
+    return bits.join(" ") || "none";
+  };
+  if (slotText(before) !== slotText(state)) changes.push(["Spell slots", `${slotText(before)} → ${slotText(state)}`]);
+  /* Keyed per class: Fighter and Rogue both have a "Weapon Mastery" counter. */
+  const trackMap = (s) => new Map(R.tracksFor(s).map((t) => [`${t.classKey}:${t.label}`, t]));
+  const tb = trackMap(before), ta = trackMap(state);
+  const multi = R.isMulticlass(state);
+  ta.forEach((t, k) => {
+    const old = tb.get(k);
+    if (old && old.value === t.value) return;
+    changes.push([multi ? `${t.label} (${CLASSES[t.classKey].name})` : t.label, `${old ? old.value : "—"} → ${t.value}`]);
+  });
+
+  const wrap = h("div", {}, h("h4", { text: `New at ${cls.name} ${lvl}` }));
+  wrap.appendChild(features.length
+    ? h("ul", { class: "feat-list" }, features.map((f) =>
+        h("li", {}, h("b", { text: `${f.name}${f.subclass ? " · " + f.subclass : ""}. ` }), f.text)))
+    : h("div", { class: "hint", text: "No new class features at this level." }));
+  if (changes.length) {
+    wrap.appendChild(h("ul", { class: "linelist", style: "margin-top:10px" }, changes.map(([l, v]) =>
+      h("li", { class: "row" }, h("span", { class: "l", text: l }), h("span", { class: "mono", text: v })))));
+  }
+  return wrap;
+}
+
+/* Spell pickers for the levelled class only, trimmed to this level: new
+   cantrips if the count rose, this level's growth row (with its swap), and
+   the prepared set when it can change. Falls back to the full walkthrough if
+   earlier levels were left short, so nothing owed is ever hidden. */
+function levelUpSpellBlocks(before, index, lvl) {
+  const w = R.spellWorkFor(state, index);
+  if (!w) return [];
+  const wb = R.spellWorkFor(before, index);
+  const wrap = h("fieldset", {}, h("legend", { text: `${w.className} spells` }));
+  let shown = false;
+
+  const cantrips = (w.pick.cantrips || []).filter(Boolean);
+  if (w.cantripTarget > 0 && (!wb || w.cantripTarget !== wb.cantripTarget || cantrips.length !== w.cantripTarget)) {
+    wrap.appendChild(cantripPicker(w)); shown = true;
+  }
+
+  if (w.prepMode !== "free") {
+    const prevTarget = w.growth.length > 1 ? w.growth[w.growth.length - 2].target : 0;
+    const list = (w.permanentList || []).filter(Boolean);
+    const row = w.growth.find((r) => r.level === lvl);
+    if (list.length < prevTarget) { wrap.appendChild(permanentGrowthWalkthrough(w)); shown = true; }
+    else if (row && (row.newCount > 0 || w.swapOnLevel)) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
+  }
+
+  const prepared = (w.pick.prepared || []).filter(Boolean);
+  const preparedChanged = !wb || w.preparedTarget !== wb.preparedTarget || w.maxLevel !== wb.maxLevel;
+  if (w.prepMode === "free" && (preparedChanged || prepared.length !== w.preparedTarget)) {
+    wrap.appendChild(flatSpellPicker(w, "prepared", w.pool, w.preparedTarget,
+      `Prepared spells — choose ${w.preparedTarget}`, null));
+    shown = true;
+  }
+  if (w.prepMode === "spellbook") {
+    wrap.appendChild(copiedSpellPicker(w));
+    const bookPool = [...(w.pick.spellbook || []), ...(w.pick.extra || [])].filter(Boolean);
+    wrap.appendChild(flatSpellPicker(w, "prepared", bookPool, w.preparedTarget,
+      `Prepared today — choose ${w.preparedTarget} from your spellbook`, null));
+    shown = true;
+  }
+  return shown ? [wrap] : [];
+}
+
+/* =======================================================================
    Sidebar sheet summary
    ======================================================================= */
 
@@ -2042,6 +2351,7 @@ function summaryLine() {
 }
 
 function doSave() {
+  if (state.levelUp) { flash("Finish or cancel the level-up first."); return; }
   const id = saveCharacter(state, summaryLine());
   if (id) {
     state.id = id;
@@ -2078,6 +2388,13 @@ function openLibrary() {
             const loaded = loadCharacter(entry.id);
             if (loaded) { state = loaded; backdrop.remove(); goToStep(STEPS.length - 1); }
           } }, "Open"),
+          h("button", { class: "btn small", type: "button", onclick: () => {
+            const loaded = loadCharacter(entry.id);
+            if (!loaded) return;
+            state = loaded;
+            backdrop.remove();
+            startLevelUp();
+          } }, "Level up"),
           h("button", { class: "btn small ghost danger", type: "button", onclick: () => {
             if (!confirm(`Delete ${entry.name}?`)) return;
             deleteCharacter(entry.id);

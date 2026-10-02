@@ -9,6 +9,7 @@ export const rogue = {
   hitDie: 8,
   saves: ["dex", "int"],
   skillCount: 4,
+  multiclassSkillCount: 1,
   skillOptions: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "persuasion", "sleightOfHand", "stealth"],
   weaponProf: "Simple weapons and Martial weapons with the Finesse or Light property",
   armorTraining: "Light armor",

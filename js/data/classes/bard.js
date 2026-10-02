@@ -9,6 +9,7 @@ export const bard = {
   hitDie: 8,
   saves: ["dex", "cha"],
   skillCount: 3,
+  multiclassSkillCount: 1,
   skillOptions: "any",
   weaponProf: "Simple weapons",
   armorTraining: "Light armor",

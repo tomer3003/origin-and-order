@@ -8,6 +8,7 @@
    There is no server and no cross-device sync — this is per-browser only. */
 
 import { ABILS } from "./data/core.js";
+import { CLASSES } from "./data/classes/index.js";
 
 export const STATE_VERSION = 3;
 
@@ -63,6 +64,8 @@ export function defaultState() {
     abilityAssign,
 
     hpRolls: {},            // { "<charLevel>": number }
+    levelOrder: [],         // class key per level, in the order taken (see R.levelLog)
+    levelUp: null,          // an in-progress single-step level-up, see app.js
 
     featPicks: {},          // { "<slotId>": { featKey, abilityBumps? } }
     featSkills: [],
@@ -149,6 +152,10 @@ export function migrate(raw) {
       extra: Array.isArray(p.extra) ? p.extra : []
     };
   });
+  /* Version 3: chronological level history for single-step levelling. */
+  out.levelOrder = Array.isArray(raw.levelOrder) ? raw.levelOrder.filter((k) => typeof k === "string") : [];
+  out.levelUp = raw.levelUp && typeof raw.levelUp === "object" ? raw.levelUp : null;
+
   ["speciesSkills", "featSkills", "featExpertise"].forEach((k) => {
     if (!Array.isArray(out[k])) out[k] = [];
   });
@@ -163,6 +170,13 @@ export function migrate(raw) {
     equipment: c.equipment || null,
     choices: c.choices && typeof c.choices === "object" ? { ...c.choices } : {}
   }));
+
+  /* Multiclassing in grants at most one skill (Bard, Ranger, Rogue) or none.
+     Older builds asked every class for its full count; trim the extras. */
+  out.classes.forEach((c, i) => {
+    if (i === 0 || !CLASSES[c.key]) return;
+    c.skills = c.skills.slice(0, CLASSES[c.key].multiclassSkillCount || 0);
+  });
 
   out.version = STATE_VERSION;
   return out;
@@ -192,7 +206,7 @@ function writeIndex(list) {
 
 export function saveCharacter(state, summary) {
   const id = state.id || makeId();
-  const stored = { ...state, id, version: STATE_VERSION };
+  const stored = { ...state, id, version: STATE_VERSION, levelUp: null };
   try {
     localStorage.setItem(CHAR_KEY(id), JSON.stringify(stored));
   } catch {
