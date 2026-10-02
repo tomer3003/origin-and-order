@@ -71,6 +71,7 @@ export const fighter = {
     battleMaster: {
       name: "Battle Master",
       blurb: "Battlefield technique fuelled by Superiority Dice",
+      skillGrants: [{ level: 3, count: 1, from: "classSkills", label: "Student of War" }],
       /* Maneuvers known: 3 at level 3, +2 each at 7, 10, and 15. */
       maneuverGrants: { 3: 3, 7: 2, 10: 2, 15: 2 },
       superiorityDice: { 3: { count: 4, die: "d8" }, 7: { count: 5, die: "d8" }, 10: { count: 5, die: "d10" }, 15: { count: 6, die: "d10" }, 18: { count: 6, die: "d12" } },
@@ -110,6 +111,9 @@ export const fighter = {
     champion: {
       name: "Champion",
       blurb: "Raw physical excellence and devastating criticals",
+      choices: [
+        { key: "fightingStyle2", level: 7, label: "Additional Fighting Style", optionsFrom: "fighter" }
+      ],
       features: {
         3: [
           { name: "Improved Critical", text: "Weapon and Unarmed Strike attacks crit on a 19 or 20." },

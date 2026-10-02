@@ -70,6 +70,7 @@ export const wizard = {
     abjurer: {
       name: "Abjurer",
       blurb: "Protective magic and a ward woven from your own spells",
+      savantSchool: "Abjuration",
       grantedSpells: { 10: [{ spell: "counterspell" }, { spell: "dispelMagic" }] },
       features: {
         3: [
@@ -84,6 +85,7 @@ export const wizard = {
     diviner: {
       name: "Diviner",
       blurb: "Glimpses of past, present, and future",
+      savantSchool: "Divination",
       features: {
         3: [
           { name: "Divination Savant", text: "Add two Divination spells of level 2 or lower to your spellbook free, plus one more Divination spell free whenever you unlock a new spell-slot level." },
@@ -97,6 +99,7 @@ export const wizard = {
     evoker: {
       name: "Evoker",
       blurb: "Explosive elemental force, aimed precisely",
+      savantSchool: "Evocation",
       features: {
         3: [
           { name: "Evocation Savant", text: "Add two Evocation spells of level 2 or lower to your spellbook free, plus one more Evocation spell free whenever you unlock a new spell-slot level." },
@@ -110,6 +113,7 @@ export const wizard = {
     illusionist: {
       name: "Illusionist",
       blurb: "Deceptions so convincing they edge into reality",
+      savantSchool: "Illusion",
       grantedSpells: {
         3: [{ spell: "minorIllusion", note: "extra cantrip (or another Wizard cantrip if you know it); doesn't count against your cantrips" }],
         6: [{ spell: "summonBeast", note: "Illusion version free once per Long Rest (half HP)" }, { spell: "summonFey", note: "Illusion version free once per Long Rest (half HP)" }]

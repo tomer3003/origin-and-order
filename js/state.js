@@ -38,7 +38,9 @@ export function newClassEntry(key) {
     skills: [],
     expertise: [],
     equipment: null,
-    choices: {}
+    choices: {},
+    subSkills: [],
+    maneuvers: []
   };
 }
 
@@ -150,7 +152,8 @@ export function migrate(raw) {
       spellbook: Array.isArray(p.spellbook) ? p.spellbook : [],
       prepared: Array.isArray(p.prepared) ? p.prepared : [],
       extra: Array.isArray(p.extra) ? p.extra : [],
-      arcanum: p.arcanum && typeof p.arcanum === "object" && !Array.isArray(p.arcanum) ? { ...p.arcanum } : {}
+      arcanum: p.arcanum && typeof p.arcanum === "object" && !Array.isArray(p.arcanum) ? { ...p.arcanum } : {},
+      sub: p.sub && typeof p.sub === "object" && !Array.isArray(p.sub) ? { ...p.sub } : {}
     };
   });
   /* Version 3: chronological level history for single-step levelling. */
@@ -169,7 +172,9 @@ export function migrate(raw) {
     skills: Array.isArray(c.skills) ? c.skills : [],
     expertise: Array.isArray(c.expertise) ? c.expertise : [],
     equipment: c.equipment || null,
-    choices: c.choices && typeof c.choices === "object" ? { ...c.choices } : {}
+    choices: c.choices && typeof c.choices === "object" ? { ...c.choices } : {},
+    subSkills: Array.isArray(c.subSkills) ? c.subSkills : [],   // subclass skill picks (Lore, Fey Wanderer, ...)
+    maneuvers: Array.isArray(c.maneuvers) ? c.maneuvers : []    // Battle Master
   }));
 
   /* Multiclassing in grants at most one skill (Bard, Ranger, Rogue) or none.

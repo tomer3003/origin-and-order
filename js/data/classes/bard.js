@@ -103,6 +103,12 @@ export const bard = {
     lore: {
       name: "College of Lore",
       blurb: "Collected spells, secrets, and cutting wit",
+      /* Bonus Proficiencies (3 skills of any kind) and Magical Discoveries. */
+      skillGrants: [{ level: 3, count: 3, from: "any" }],
+      spellChoices: [
+        { id: "magicalDiscoveries", level: 6, count: 2, label: "Magical Discoveries", lists: ["cleric", "druid", "wizard"], maxSpellLevel: "slots", alwaysPrepared: true,
+          note: "Cantrips or spells of a level you have slots for, from the Cleric, Druid, or Wizard lists. Always prepared; you may replace one whenever you gain a Bard level." }
+      ],
       features: {
         3: [
           { name: "Bonus Proficiencies", text: "Gain proficiency with three skills of your choice." },

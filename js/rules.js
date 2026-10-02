@@ -4,7 +4,7 @@
 import {
   ABILS, ABIL_NAME, ARMOR, PB_COST, STANDARD_ARRAY, SKILLS,
   FULL_CASTER_SLOTS, HALF_CASTER_SLOTS, THIRD_CASTER_SLOTS, PACT_MAGIC,
-  ASI_FEATURE, EPIC_BOON_FEATURE
+  ASI_FEATURE, EPIC_BOON_FEATURE, FIGHTING_STYLES
 } from "./data/core.js";
 import { CLASSES, CASTER_WEIGHT, THIRD_CASTER_SUBCLASSES } from "./data/classes/index.js";
 import { SPECIES } from "./data/species.js";
@@ -322,6 +322,10 @@ function unarmoredDefenseOptions(state) {
 export function proficientSkills(state) {
   const set = new Set();
   classEntries(state).forEach((c) => (c.skills || []).forEach((s) => set.add(s)));
+  classEntries(state).forEach((c) => {
+    subclassSkillGrants(c).forEach((g) => (g.fixed || []).forEach((s) => set.add(s)));
+    (c.subSkills || []).filter(Boolean).forEach((s) => set.add(s));
+  });
   const bg = BACKGROUNDS[state.backgroundKey];
   if (bg) bg.skills.forEach((s) => set.add(s));
   (state.speciesSkills || []).filter(Boolean).forEach((s) => set.add(s));
@@ -524,6 +528,58 @@ function pickEntry(state, classIndex) {
   return p;
 }
 
+/* Subclass spell picks (picked into spellPicks[i].sub[id]):
+   - `spellChoices` in the data, e.g. Lore's Magical Discoveries.
+   - `savantSchool` (Wizard schools): two spells of that school of level 2 or
+     lower at level 3, then one more each time the Wizard gains a new spell
+     slot level — added free to the spellbook.
+   Each choice is tied to the class level that grants it so the Spells step
+   can show it in that level's row. */
+export function subclassSpellChoices(entry, caster, pick) {
+  const cls = CLASSES[entry.key];
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  if (!sub) return [];
+  const level = entry.levels || 0;
+  const out = [];
+  if (!pick.sub || typeof pick.sub !== "object") pick.sub = {};
+
+  (sub.spellChoices || []).forEach((c) => {
+    if (level < c.level) return;
+    const max = c.maxSpellLevel === "slots" ? maxSpellLevelFor(caster, level) : c.maxSpellLevel;
+    const seen = new Set(); const pool = [];
+    (c.lists || [caster.listKey]).forEach((lk) => spellsForList(lk, 0, max).forEach((k) => { if (!seen.has(k)) { seen.add(k); pool.push(k); } }));
+    out.push({ ...c, classLevel: c.level, pool: sortSpells(pool) });
+  });
+
+  if (sub.savantSchool) {
+    const schoolPool = (maxLvl) => sortSpells(spellsForList(caster.listKey, 1, maxLvl).filter((k) => SPELLS[k].school === sub.savantSchool));
+    if (level >= 3) {
+      out.push({ id: "savant3", classLevel: 3, count: 2, label: `${sub.savantSchool} Savant`, intoSpellbook: true,
+        note: `Two ${sub.savantSchool} spells of level 2 or lower, added to your spellbook free.`, pool: schoolPool(2) });
+    }
+    for (let l = 4; l <= level; l++) {
+      const now = maxSpellLevelFor(caster, l), before = maxSpellLevelFor(caster, l - 1);
+      if (now > before && now > 2) {
+        out.push({ id: `savant${l}`, classLevel: l, count: 1, label: `${sub.savantSchool} Savant`, intoSpellbook: true,
+          note: `New spell slot level ${now}: one ${sub.savantSchool} spell of a level you have slots for, added to your spellbook free.`, pool: schoolPool(now) });
+      }
+    }
+  }
+
+  return out.map((c) => ({ ...c, chosen: (pick.sub[c.id] || []).filter((k) => c.pool.includes(k)) }));
+}
+
+function sortSpells(keys) {
+  return keys.sort((a, b) => SPELLS[a].level - SPELLS[b].level || SPELLS[a].name.localeCompare(SPELLS[b].name));
+}
+
+/* Everything physically in a Wizard's spellbook: level-up growth, copied
+   spells, and Savant picks. */
+export function spellbookContents(w) {
+  const savant = (w.subChoices || []).filter((c) => c.intoSpellbook).flatMap((c) => c.chosen);
+  return [...new Set([...(w.pick.spellbook || []), ...(w.pick.extra || []), ...savant].filter(Boolean))];
+}
+
 /* Mystic Arcanum (Warlock 11/13/15/17): one Warlock spell of level 6/7/8/9
    each, cast once per Long Rest without a slot. These sit outside Pact
    Magic, whose slots stop at level 5, so they're picked separately from
@@ -645,6 +701,7 @@ export function spellWorkFor(state, classIndex) {
     pool: spellPoolFor(caster, level, 1, maxLevel),
     preparedTarget,
     arcanum: fromSubclass ? [] : arcanumSlotsFor(entry, caster, pick),
+    subChoices: fromSubclass ? [] : subclassSpellChoices(entry, caster, pick),
     pick
   };
 }
@@ -676,6 +733,9 @@ export function spellStepIssues(state) {
     }
     w.arcanum.forEach((a) => {
       if (!a.chosen) issues.push(`${w.className}: choose a level ${a.spellLevel} Mystic Arcanum spell.`);
+    });
+    w.subChoices.forEach((c) => {
+      if (c.chosen.length !== c.count) issues.push(`${w.className}: ${c.label} (level ${c.classLevel}) — choose ${c.count} (${c.chosen.length} chosen).`);
     });
   });
   featSpellGrants(state).forEach((g) => issues.push(...featSpellIssues(g)));
@@ -764,7 +824,7 @@ export function allKnownSpellKeys(state) {
   const set = new Set();
   Object.values(state.spellPicks || {}).forEach((p) => {
     [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || []), ...(p.extra || []),
-     ...Object.values(p.arcanum || {})]
+     ...Object.values(p.arcanum || {}), ...Object.values(p.sub || {}).flat()]
       .filter(Boolean).forEach((k) => set.add(k));
   });
   featSpellGrants(state).forEach((g) => {
@@ -813,6 +873,39 @@ export function pendingClassChoices(state) {
     });
   });
   return out;
+}
+
+/* ---------------- Subclass skills and Battle Master maneuvers ----------------
+
+   `skillGrants`: [{ level, count, from: [skills] | "any" | "classSkills",
+   fixed: [skills], label }]. Picks for every grant of a subclass share one
+   array, entry.subSkills; fixed skills need no pick. */
+export function subclassSkillGrants(entry) {
+  const cls = CLASSES[entry.key];
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  if (!sub) return [];
+  return (sub.skillGrants || []).filter((g) => (entry.levels || 0) >= g.level).map((g) => ({
+    ...g,
+    count: g.count || 0,
+    options: g.from === "any" ? Object.keys(SKILLS)
+      : g.from === "classSkills" ? (cls.skillOptions === "any" ? Object.keys(SKILLS) : cls.skillOptions)
+      : (g.from || []),
+    label: g.label || sub.name
+  }));
+}
+
+export function subclassSkillsOwed(entry) {
+  return subclassSkillGrants(entry).reduce((n, g) => n + g.count, 0);
+}
+
+/* Battle Master: maneuvers known by Fighter level, from `maneuverGrants`. */
+export function maneuversOwed(entry) {
+  const cls = CLASSES[entry.key];
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  if (!sub || !sub.maneuverGrants) return 0;
+  return Object.entries(sub.maneuverGrants)
+    .filter(([lvl]) => (entry.levels || 0) >= Number(lvl))
+    .reduce((n, [, c]) => n + c, 0);
 }
 
 /* ---------------- Spells granted by subclass features ----------------
@@ -1017,6 +1110,26 @@ export function featuresByClass(state) {
       if (sub && sub.features && sub.features[lvl]) {
         sub.features[lvl].forEach((f) => rows.push({ level: lvl, subclass: sub.name, ...f }));
       }
+
+      /* What the player actually chose, at the level they chose it. */
+      choicesFor(entry).filter((c) => c.level === lvl).forEach((c) => {
+        const picked = entry.choices && entry.choices[c.key];
+        if (!picked) return;
+        const opt = (c.options || []).concat(c.extraOptions || []).find((o) => o.key === picked)
+          || (c.optionsFrom && FIGHTING_STYLES[picked] ? FIGHTING_STYLES[picked] : null);
+        if (opt) rows.push({ level: lvl, subclass: c.fromSubclass, name: `${c.label}: ${opt.name}`, text: opt.text });
+      });
+      if (sub) {
+        subclassSkillGrants(entry).filter((g) => g.level === lvl).forEach((g) => {
+          const picks = g.count ? (entry.subSkills || []).filter(Boolean) : [];
+          const all = [...(g.fixed || []), ...picks].map((s) => SKILLS[s] ? SKILLS[s].name : s);
+          if (all.length) rows.push({ level: lvl, subclass: sub.name, name: `${g.label} skills`, text: all.join(", ") + "." });
+        });
+        if (sub.maneuvers && lvl === cls.subclassLevel && (entry.maneuvers || []).length) {
+          rows.push({ level: lvl, subclass: sub.name, name: "Maneuvers",
+            text: entry.maneuvers.filter((k) => sub.maneuvers[k]).map((k) => sub.maneuvers[k].name).join(", ") + "." });
+        }
+      }
     }
 
     return {
@@ -1119,6 +1232,19 @@ export function classStepIssues(state) {
 
   pendingClassChoices(state).forEach(({ cls, choice }) => {
     issues.push(`${cls.name}: choose ${choice.label}.`);
+  });
+
+  entries.forEach((entry) => {
+    const cls = CLASSES[entry.key];
+    const skillWant = subclassSkillsOwed(entry);
+    const skillGot = (entry.subSkills || []).filter(Boolean).length;
+    if (skillWant !== skillGot) {
+      const g = subclassSkillGrants(entry).find((x) => x.count);
+      issues.push(`${cls.name}: choose ${skillWant} skill${skillWant === 1 ? "" : "s"} from ${g ? g.label : "your subclass"} (${skillGot} chosen).`);
+    }
+    const manWant = maneuversOwed(entry);
+    const manGot = (entry.maneuvers || []).filter(Boolean).length;
+    if (manWant !== manGot) issues.push(`${cls.name}: choose ${manWant} maneuver${manWant === 1 ? "" : "s"} (${manGot} chosen).`);
   });
 
   return issues;

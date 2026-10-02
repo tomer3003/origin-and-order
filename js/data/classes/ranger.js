@@ -97,6 +97,16 @@ export const ranger = {
     beastMaster: {
       name: "Beast Master",
       blurb: "A primal beast bonded to you by nature magic",
+      choices: [
+        {
+          key: "primalCompanion", level: 3, label: "Primal Companion",
+          options: [
+            { key: "land", name: "Beast of the Land", text: "A land animal, using the Beast of the Land stat block." },
+            { key: "sea", name: "Beast of the Sea", text: "A water animal, using the Beast of the Sea stat block." },
+            { key: "sky", name: "Beast of the Sky", text: "A flying animal, using the Beast of the Sky stat block." }
+          ]
+        }
+      ],
       features: {
         3: [{ name: "Primal Companion", text: "Summon a primal beast — Beast of the Land, Sea, or Sky — that is Friendly to you and your allies and vanishes when you die. It acts on your turn, moving and using its Reaction freely but only Dodging unless you spend a Bonus Action to command an action, or sacrifice one of your own attacks to have it use Beast's Strike. Add your Proficiency Bonus to its checks and saves. Beast's Strike: melee attack at your spell attack bonus, reach 5 ft., 1d4 + 3 + your Wisdom modifier Slashing damage." }],
         7: [{ name: "Exceptional Training", text: "Commanding the beast to act also lets it Dash, Disengage, Dodge, or Help with its Bonus Action, and its damaging hits can deal Force damage instead of their normal type." }],
@@ -107,6 +117,7 @@ export const ranger = {
     feyWanderer: {
       name: "Fey Wanderer",
       blurb: "Feywild mirth, glamour, and mind-scarring fury",
+      skillGrants: [{ level: 3, count: 1, from: ["deception", "performance", "persuasion"] }],
       spellsByLevel: {
         3: ["Charm Person"],
         5: ["Misty Step"],
@@ -147,6 +158,22 @@ export const ranger = {
     hunter: {
       name: "Hunter",
       blurb: "Tactical prey-hunting against any kind of foe",
+      choices: [
+        {
+          key: "huntersPrey", level: 3, label: "Hunter's Prey", note: "Swappable after each Short or Long Rest.",
+          options: [
+            { key: "colossusSlayer", name: "Colossus Slayer", text: "Once per turn, a weapon hit deals an extra 1d8 to a target that is missing any Hit Points." },
+            { key: "hordeBreaker", name: "Horde Breaker", text: "Once per turn, make another weapon attack against a different creature within 5 ft. of the first target that you haven't attacked this turn." }
+          ]
+        },
+        {
+          key: "defensiveTactics", level: 7, label: "Defensive Tactics", note: "Swappable after each Short or Long Rest.",
+          options: [
+            { key: "escapeTheHorde", name: "Escape the Horde", text: "Opportunity Attacks against you have Disadvantage." },
+            { key: "multiattackDefense", name: "Multiattack Defense", text: "A creature that hits you has Disadvantage on its other attacks against you this turn." }
+          ]
+        }
+      ],
       features: {
         3: [
           { name: "Hunter's Lore", text: "While a creature carries your Hunter's Mark you know its Immunities, Resistances, and Vulnerabilities." },

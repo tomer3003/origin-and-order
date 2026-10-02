@@ -91,6 +91,16 @@ export const barbarian = {
     wildHeart: {
       name: "Path of the Wild Heart",
       blurb: "Kinship with the animal world",
+      choices: [
+        {
+          key: "aspectOfTheWilds", level: 6, label: "Aspect of the Wilds", note: "Changeable after each Long Rest.",
+          options: [
+            { key: "owl", name: "Owl", text: "Darkvision 60 ft., or +60 ft. if you already have it." },
+            { key: "panther", name: "Panther", text: "Climb Speed equal to your Speed." },
+            { key: "salmon", name: "Salmon", text: "Swim Speed equal to your Speed." }
+          ]
+        }
+      ],
       grantedSpells: {
         3: [{ spell: "beastSense", ability: "wis", note: "Ritual only" }, { spell: "speakWithAnimals", ability: "wis", note: "Ritual only" }],
         10: [{ spell: "communeWithNature", ability: "wis", note: "Ritual only" }]

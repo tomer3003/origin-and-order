@@ -585,6 +585,10 @@ function classDetail(entry, index) {
   subclassChoices(entry).forEach((choice) => {
     if ((entry.levels || 0) >= choice.level) wrap.appendChild(choiceFieldset(entry, cls, choice));
   });
+  const subSkills = subSkillFieldset(entry);
+  if (subSkills) wrap.appendChild(subSkills);
+  const maneuvers = maneuverFieldset(entry, cls);
+  if (maneuvers) wrap.appendChild(maneuvers);
 
   wrap.appendChild(featureSummary(entry, cls));
   return wrap;
@@ -715,6 +719,70 @@ function choiceFieldset(entry, cls, choice) {
   );
 }
 
+/* Skills a subclass grants (Lore's Bonus Proficiencies, Fey Wanderer,
+   Student of War, Implements of Mercy). One shared pick list per class
+   entry; fixed skills are listed, not picked. */
+function subSkillFieldset(entry) {
+  const grants = R.subclassSkillGrants(entry);
+  if (!grants.length) return null;
+  const want = R.subclassSkillsOwed(entry);
+  const chosen = (entry.subSkills || []).filter(Boolean);
+  const fixed = grants.flatMap((g) => g.fixed || []);
+  const options = [...new Set(grants.filter((g) => g.count).flatMap((g) => g.options))]
+    .sort((a, b) => SKILLS[a].name.localeCompare(SKILLS[b].name));
+  const elsewhere = skillsFromOtherSources(null);
+  (entry.skills || []).forEach((s) => elsewhere.add(s));
+  const label = grants.map((g) => g.label).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+  return h("fieldset", {},
+    h("legend", { text: want ? `${label}: skills — choose ${want}` : `${label}: skills` }),
+    fixed.length ? h("div", { class: "hint", text: `Granted: ${fixed.map((s) => SKILLS[s].name).join(", ")}.` }) : null,
+    want ? h("div", { class: "chip-select" },
+      options.map((sk) => {
+        const on = chosen.includes(sk);
+        const dupe = !on && (elsewhere.has(sk) || fixed.includes(sk));
+        const full = !on && chosen.length >= want;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+          type: "button", disabled: full,
+          title: dupe ? "You already have this from another source" : null,
+          onclick: () => {
+            entry.subSkills = on ? chosen.filter((s) => s !== sk) : [...chosen, sk];
+            rerender();
+          }
+        }, SKILLS[sk].name);
+      })) : null,
+    want ? h("div", { class: "hint", text: `${chosen.length} of ${want} chosen.` }) : null
+  );
+}
+
+/* Battle Master maneuvers: a growing pick (3 at level 3, +2 at 7, 10, 15).
+   Hover a maneuver for its text. */
+function maneuverFieldset(entry, cls) {
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  const want = R.maneuversOwed(entry);
+  if (!sub || !sub.maneuvers || !want) return null;
+  const chosen = (entry.maneuvers || []).filter((k) => sub.maneuvers[k]);
+  return h("fieldset", {},
+    h("legend", { text: `${sub.name}: maneuvers — choose ${want}` }),
+    h("div", { class: "hint", style: "margin-bottom:6px", text: "Hover or focus a maneuver to read it. You can swap one whenever you gain a Fighter level that grants more." }),
+    h("div", { class: "chip-select" },
+      Object.entries(sub.maneuvers).map(([k, m]) => {
+        const on = chosen.includes(k);
+        const full = !on && chosen.length >= want;
+        return h("button", {
+          class: `chip${on ? " on" : ""}${full ? " disabled" : ""}`,
+          type: "button", disabled: full,
+          ...tooltipTrigger(() => popoverHtml({ name: m.name, meta: `${sub.name} maneuver`, body: m.text })),
+          onclick: () => {
+            entry.maneuvers = on ? chosen.filter((x) => x !== k) : [...chosen, k];
+            rerender();
+          }
+        }, m.name);
+      })),
+    h("div", { class: "hint", text: `${chosen.length} of ${want} chosen.` })
+  );
+}
+
 /* The chosen subclass's own choices (shape matches cls.choices). */
 function subclassChoices(entry) {
   return R.choicesFor(entry).filter((c) => c.fromSubclass);
@@ -730,8 +798,12 @@ function subclassFieldset(entry, cls) {
         type: "button",
         onclick: () => {
           /* The old subclass's own choices don't carry over to a new one. */
-          if (entry.subclass !== sub.key && entry.choices) {
-            subclassChoices(entry).forEach((c) => { delete entry.choices[c.key]; });
+          if (entry.subclass !== sub.key) {
+            if (entry.choices) subclassChoices(entry).forEach((c) => { delete entry.choices[c.key]; });
+            entry.subSkills = [];
+            entry.maneuvers = [];
+            const idx = state.classes.indexOf(entry);
+            if (state.spellPicks && state.spellPicks[idx]) state.spellPicks[idx].sub = {};
           }
           entry.subclass = sub.key;
           rerender();
@@ -1490,7 +1562,7 @@ function casterSpellBlock(w) {
     wrap.appendChild(permanentGrowthWalkthrough(w));
     if (w.prepMode === "spellbook") {
       wrap.appendChild(copiedSpellPicker(w));
-      const bookPool = [...(w.pick.spellbook || []), ...(w.pick.extra || [])].filter(Boolean);
+      const bookPool = R.spellbookContents(w);
       wrap.appendChild(flatSpellPicker(w, "prepared", bookPool, w.preparedTarget,
         `Prepared today — choose ${w.preparedTarget} from your spellbook`,
         bookPool.length ? null : "Add spells to your spellbook above first."));
@@ -1742,7 +1814,8 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     const grants = grantsAt(w.classIndex, row.level);
     const arcana = (w.arcanum || []).filter((a) => a.classLevel === row.level);
     const subGrants = subclassGrantsAt(w.classIndex, row.level);
-    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length && !arcana.length && !subGrants.length)) return;
+    const subPicks = (w.subChoices || []).filter((c) => c.classLevel === row.level);
+    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length && !arcana.length && !subGrants.length && !subPicks.length)) return;
 
     const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
     section.appendChild(h("div", { class: "spell-level-head" },
@@ -1777,6 +1850,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
       section.appendChild(swapControl(w, list, startIndex));
     }
     if (subGrants.length) section.appendChild(subclassGrantBlock(subGrants));
+    subPicks.forEach((c) => section.appendChild(subChoicePicker(w, c)));
     arcana.forEach((a) => section.appendChild(arcanumPicker(w, a)));
     grants.forEach((g) => section.appendChild(featSpellGrantBlock(g)));
 
@@ -1784,6 +1858,34 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
   });
 
   return wrap;
+}
+
+/* A subclass spell pick (Lore's Magical Discoveries, Wizard Savant), shown
+   in the walkthrough row for the class level that grants it. */
+function subChoicePicker(w, c) {
+  const known = R.allKnownSpellKeys(state);
+  return h("div", { class: "feat-grant", style: "margin:6px 0 10px" },
+    h("div", { class: "spell-level-head" },
+      h("span", { text: `${c.label} — choose ${c.count}` }),
+      h("span", { class: `count${c.chosen.length >= c.count ? " full" : ""}`, text: `${c.chosen.length} / ${c.count}` })),
+    c.note ? h("div", { class: "hint", text: c.note }) : null,
+    spellChipGroups(c.pool, (key) => {
+      const spell = SPELLS[key];
+      const on = c.chosen.includes(key);
+      const dupe = !on && known.has(key);
+      const full = !on && c.chosen.length >= c.count;
+      return h("button", {
+        class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}${full ? " disabled" : ""}`,
+        type: "button", disabled: full,
+        title: dupe ? "You already know this from another source" : null,
+        ...tooltipTrigger(() => spellPopoverHtml(spell)),
+        onclick: () => {
+          w.pick.sub = { ...(w.pick.sub || {}), [c.id]: on ? c.chosen.filter((k) => k !== key) : [...c.chosen, key] };
+          rerender();
+        }
+      }, spell.name);
+    })
+  );
 }
 
 /* Mystic Arcanum: a single choice of one Warlock spell of the arcanum's
@@ -2127,7 +2229,10 @@ function spellNameList(w) {
     ...(w.prepMode === "free" || w.prepMode === "spellbook" ? (w.pick.prepared || []) : (w.pick.known || []))
   ].filter(Boolean);
   const arcana = (w.arcanum || []).filter((a) => a.chosen);
-  const subKeys = R.subclassSpellGrants(state).filter((g) => g.classIndex === w.classIndex).map((g) => g.key);
+  const subKeys = [
+    ...R.subclassSpellGrants(state).filter((g) => g.classIndex === w.classIndex).map((g) => g.key),
+    ...(w.subChoices || []).filter((c) => c.alwaysPrepared).flatMap((c) => c.chosen)
+  ];
   if (!readyKeys.length && !arcana.length && !subKeys.length) return null;
 
   const byLevel = new Map();
@@ -2436,6 +2541,15 @@ function buildLevelUpChoose(panel) {
   }
   subclassChoices(entry).filter((c) => pendingKeys.has(c.key) || c.level === lvl || (lvl === cls.subclassLevel && c.level <= lvl))
     .forEach((choice) => panel.appendChild(choiceFieldset(entry, cls, choice)));
+  /* Subclass skills and maneuvers: when this level grants some, or older
+     ones are still owed. */
+  const beforeEntry = before.classes[index];
+  if (R.subclassSkillGrants(entry).some((g) => g.level === lvl) || R.subclassSkillsOwed(entry) !== (entry.subSkills || []).length) {
+    const f = subSkillFieldset(entry); if (f) panel.appendChild(f);
+  }
+  if (R.maneuversOwed(entry) !== (beforeEntry ? R.maneuversOwed(beforeEntry) : 0) || R.maneuversOwed(entry) !== (entry.maneuvers || []).length) {
+    const f = maneuverFieldset(entry, cls); if (f) panel.appendChild(f);
+  }
 
   /* The feat slot this level grants, plus anything still owed from before. */
   const pendingIds = new Set(R.pendingFeatSlots(state).map((s) => s.id));
@@ -2533,7 +2647,7 @@ function levelUpSpellBlocks(before, index, lvl) {
     const list = (w.permanentList || []).filter(Boolean);
     const row = w.growth.find((r) => r.level === lvl);
     if (list.length < prevTarget) { wrap.appendChild(permanentGrowthWalkthrough(w)); shown = true; }
-    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length || subclassGrantsAt(index, lvl).length || w.arcanum.some((a) => a.classLevel === lvl))) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
+    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length || subclassGrantsAt(index, lvl).length || w.subChoices.some((c) => c.classLevel === lvl) || w.arcanum.some((a) => a.classLevel === lvl))) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
   }
 
   /* An arcanum owed from an earlier level that was never picked. */
@@ -2550,7 +2664,7 @@ function levelUpSpellBlocks(before, index, lvl) {
   }
   if (w.prepMode === "spellbook") {
     wrap.appendChild(copiedSpellPicker(w));
-    const bookPool = [...(w.pick.spellbook || []), ...(w.pick.extra || [])].filter(Boolean);
+    const bookPool = R.spellbookContents(w);
     wrap.appendChild(flatSpellPicker(w, "prepared", bookPool, w.preparedTarget,
       `Prepared today — choose ${w.preparedTarget} from your spellbook`, null));
     shown = true;

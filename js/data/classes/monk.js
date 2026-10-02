@@ -87,6 +87,7 @@ export const monk = {
     mercy: {
       name: "Warrior of Mercy",
       blurb: "Hands that heal and hands that harm",
+      skillGrants: [{ level: 3, fixed: ["insight", "medicine"], label: "Implements of Mercy" }],
       features: {
         3: [
           { name: "Hand of Harm", text: "Once per turn on an Unarmed Strike hit, spend 1 Focus Point for extra Necrotic damage equal to one Martial Arts die + your Wisdom modifier." },

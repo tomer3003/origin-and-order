@@ -122,6 +122,18 @@ export const sorcerer = {
     draconic: {
       name: "Draconic Sorcery",
       blurb: "The blood and resilience of dragons",
+      choices: [
+        {
+          key: "draconicElement", level: 6, label: "Elemental Affinity",
+          options: [
+            { key: "acid", name: "Acid", text: "Resistance to Acid, and add your Charisma modifier to one damage roll of a spell that deals Acid damage." },
+            { key: "cold", name: "Cold", text: "Resistance to Cold, and add your Charisma modifier to one damage roll of a spell that deals Cold damage." },
+            { key: "fire", name: "Fire", text: "Resistance to Fire, and add your Charisma modifier to one damage roll of a spell that deals Fire damage." },
+            { key: "lightning", name: "Lightning", text: "Resistance to Lightning, and add your Charisma modifier to one damage roll of a spell that deals Lightning damage." },
+            { key: "poison", name: "Poison", text: "Resistance to Poison, and add your Charisma modifier to one damage roll of a spell that deals Poison damage." }
+          ]
+        }
+      ],
       spellsByLevel: {
         3: ["Alter Self", "Chromatic Orb", "Command", "Dragon's Breath"],
         5: ["Fear", "Fly"],
