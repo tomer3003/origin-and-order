@@ -12,7 +12,7 @@ import { CLASSES } from "./data/classes/index.js";
 
 export const STATE_VERSION = 3;
 
-export const STEPS = ["class", "species", "background", "abilities", "hp", "feats", "spells", "identity", "sheet"];
+export const STEPS = ["class", "species", "background", "abilities", "hp", "feats", "spells", "equipment", "identity", "sheet"];
 
 export const STEP_LABEL = {
   class: "Classes & Levels",
@@ -22,6 +22,7 @@ export const STEP_LABEL = {
   hp: "Hit Points",
   feats: "Feats",
   spells: "Spells",
+  equipment: "Equipment",
   identity: "Details",
   sheet: "Character Sheet"
 };
@@ -40,7 +41,8 @@ export function newClassEntry(key) {
     equipment: null,
     choices: {},
     subSkills: [],
-    maneuvers: []
+    maneuvers: [],
+    masteries: []
   };
 }
 
@@ -77,6 +79,11 @@ export function defaultState() {
 
     armorOverride: null,    // lets the player pick armour independent of the kit
     shieldOverride: null,
+
+    inventory: [],          // [{ ref: "<kind>:<key>" | null, name?, qty, note? }] — see rules.js
+    coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
+    worn: null,             // { armor, shield } once chosen in the Equipment step
+    bgEquipment: "A",       // background kit (A) or its 50 GP (B)
 
     alignment: null,
     pronouns: "",
@@ -160,6 +167,12 @@ export function migrate(raw) {
   out.levelOrder = Array.isArray(raw.levelOrder) ? raw.levelOrder.filter((k) => typeof k === "string") : [];
   out.levelUp = raw.levelUp && typeof raw.levelUp === "object" ? raw.levelUp : null;
 
+  /* Version 3: equipment. */
+  out.inventory = Array.isArray(raw.inventory) ? raw.inventory.filter((it) => it && typeof it === "object") : [];
+  out.coins = { ...base.coins, ...(raw.coins && typeof raw.coins === "object" ? raw.coins : {}) };
+  out.worn = raw.worn && typeof raw.worn === "object" ? { armor: raw.worn.armor || null, shield: !!raw.worn.shield } : null;
+  out.bgEquipment = raw.bgEquipment === "B" ? "B" : "A";
+
   ["speciesSkills", "featSkills", "featExpertise"].forEach((k) => {
     if (!Array.isArray(out[k])) out[k] = [];
   });
@@ -174,7 +187,8 @@ export function migrate(raw) {
     equipment: c.equipment || null,
     choices: c.choices && typeof c.choices === "object" ? { ...c.choices } : {},
     subSkills: Array.isArray(c.subSkills) ? c.subSkills : [],   // subclass skill picks (Lore, Fey Wanderer, ...)
-    maneuvers: Array.isArray(c.maneuvers) ? c.maneuvers : []    // Battle Master
+    maneuvers: Array.isArray(c.maneuvers) ? c.maneuvers : [],   // Battle Master
+    masteries: Array.isArray(c.masteries) ? c.masteries : []    // Weapon Mastery picks
   }));
 
   /* Multiclassing in grants at most one skill (Bard, Ranger, Rogue) or none.

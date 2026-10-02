@@ -11,6 +11,7 @@ export const rogue = {
   skillCount: 4,
   multiclassSkillCount: 1,
   skillOptions: ["acrobatics", "athletics", "deception", "insight", "intimidation", "investigation", "perception", "persuasion", "sleightOfHand", "stealth"],
+  masteryChoice: "proficient",   // which weapon kinds Weapon Mastery can pick (melee | any | proficient)
   weaponProf: "Simple weapons and Martial weapons with the Finesse or Light property",
   armorTraining: "Light armor",
   toolProf: "Thieves' Tools",

@@ -11,6 +11,7 @@ import { SPECIES } from "./data/species.js";
 import { BACKGROUNDS } from "./data/backgrounds.js";
 import { FEATS } from "./data/feats.js";
 import { SPELLS, spellsForList } from "./data/spells.js";
+import { WEAPONS, AMMUNITION, ARMOR_DETAILS, TOOLS, GEAR } from "./data/equipment.js";
 
 export const MAX_LEVEL = 20;
 
@@ -261,6 +262,253 @@ export function hpPendingLevels(state) {
   return hpRows(state).filter((r) => r.pending).map((r) => r.charLevel);
 }
 
+/* ---------------- Equipment ----------------
+
+   state.inventory: [{ ref: "<kind>:<key>" | null, name?, qty, note? }]
+     kinds: weapon | ammo | armor | tool | gear (tables in data/equipment.js);
+     ref null = a free-text item (e.g. "your chosen Artisan's Tools").
+     Ammunition qty counts pieces (20 Arrows = qty 20).
+   state.coins: { cp, sp, ep, gp, pp }
+   state.worn:  { armor: <ARMOR key> | null, shield: bool } once set in the
+                Equipment step (null before: AC falls back to the class kit).
+   entry.masteries: weapon keys chosen for Weapon Mastery, per class entry. */
+
+export const ITEM_TABLES = { weapon: WEAPONS, ammo: AMMUNITION, armor: ARMOR_DETAILS, tool: TOOLS, gear: GEAR };
+
+export function itemInfo(ref) {
+  if (!ref || ref.indexOf(":") < 0) return null;
+  const [kind, key] = ref.split(":");
+  const t = ITEM_TABLES[kind];
+  return t && t[key] ? { kind, key, ...t[key] } : null;
+}
+
+export function itemName(it) {
+  const info = itemInfo(it.ref);
+  return info ? info.name : (it.name || "Item");
+}
+
+/* Weight of one inventory line, in pounds (ammunition by the piece). */
+export function itemWeight(it) {
+  const info = itemInfo(it.ref);
+  const each = info ? (info.kind === "ammo" ? (info.weight || 0) / (info.amount || 1) : (info.weight || 0)) : (it.weight || 0);
+  return each * (Number(it.qty) || 0);
+}
+
+/* "Clothes, Fine" ↔ "fine clothes"; "Daggers" ↔ "dagger"; drop "(variant)". */
+function normItemName(s) {
+  let t = String(s).toLowerCase().replace(/[’']/g, "'").replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const m = t.match(/^([^,]+), (.+)$/);
+  if (m) t = `${m[2]} ${m[1]}`;
+  return t.replace(/^(a|an|your|one)\s+/, "");
+}
+function singular(s) {
+  return s.replace(/ies$/, "y").replace(/(ch|sh|x|ss)es$/, "$1").replace(/(?<!s)s$/, "");
+}
+let itemIndexCache = null;
+export function matchItem(text) {
+  if (!itemIndexCache) {
+    itemIndexCache = new Map();
+    Object.entries(ITEM_TABLES).forEach(([kind, t]) => Object.entries(t).forEach(([key, v]) => {
+      const n = normItemName(v.name);
+      [n, singular(n)].forEach((x) => { if (!itemIndexCache.has(x)) itemIndexCache.set(x, `${kind}:${key}`); });
+    }));
+  }
+  const n = normItemName(text);
+  return itemIndexCache.get(n) || itemIndexCache.get(singular(n)) || null;
+}
+
+/* Turn a kit string ("Chain Mail, Greatsword, 8 Javelins, Dungeoneer's Pack,
+   4 GP") into inventory lines plus coins. Anything that doesn't match a
+   table item is kept as a free-text line, so nothing is silently dropped. */
+export function parseKit(text) {
+  const items = []; const coins = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+  String(text || "").replace(/\s*\(or \d+ GP\)\s*$/i, "")
+    .split(/,\s*(?![^()]*\))/).map((p) => p.trim().replace(/^and\s+/, "")).filter(Boolean)
+    .forEach((part) => {
+      const coin = part.match(/^(\d+)\s*(CP|SP|EP|GP|PP)\b/i);
+      if (coin) { coins[coin[2].toLowerCase()] += Number(coin[1]); return; }
+      const q = part.match(/^(\d+)\s+(.+)$/);
+      const qty = q ? Number(q[1]) : 1;
+      let name = q ? q[2] : part;
+      /* "Shortbow and 20 arrows" (background kits) → two items. */
+      const pair = name.match(/^(.+?) and (\d+) (.+)$/);
+      if (pair) { items.push(...parseKit(pair[1]).items, ...parseKit(`${pair[2]} ${pair[3]}`).items); return; }
+      /* "Druidic Focus (Quarterstaff)" is the weapon itself, used as a focus. */
+      const paren = name.match(/^(.+?)\s*\(([^)]+)\)$/);
+      if (paren) {
+        const inner = matchItem(paren[2]);
+        if (inner && inner.startsWith("weapon:")) { items.push({ ref: inner, qty, note: paren[1] }); return; }
+      }
+      if (/^spellbook$/i.test(name)) { items.push({ ref: null, name: "Spellbook", qty, weight: 3, note: "Wizard spellbook" }); return; }
+      const ref = matchItem(name);
+      if (ref) items.push({ ref, qty, note: paren ? paren[2] : undefined });
+      else items.push({ ref: null, name: part, qty: 1 });
+    });
+  return { items, coins };
+}
+
+/* The starting gear chosen in the Class step (starting class only) plus the
+   background's kit (option A) or its 50 GP (option B). */
+export function startingEquipment(state) {
+  const items = []; const coins = { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 };
+  const add = (kit) => { items.push(...kit.items); Object.keys(coins).forEach((c) => { coins[c] += kit.coins[c]; }); };
+  const first = classEntries(state)[0];
+  let worn = { armor: null, shield: false };
+  if (first) {
+    const eq = (CLASSES[first.key].equipment || []).find((e) => e.key === first.equipment);
+    if (eq) {
+      add(parseKit(eq.label.replace(/ to spend freely$/i, "")));
+      worn = { armor: eq.armor && eq.armor !== "none" && eq.armor !== "clothes" ? eq.armor : null, shield: !!eq.shield };
+    }
+  }
+  const bg = BACKGROUNDS[state.backgroundKey];
+  if (bg) {
+    if (state.bgEquipment === "B") coins.gp += 50;
+    else add(parseKit(bg.equipment));
+  }
+  return { items, coins, worn };
+}
+
+/* ---- Training ---- */
+
+/* Weapon proficiency: the starting class's wording, plus Martial weapons from
+   multiclassing, Protector/Warden, or the Martial Weapon Training feat. */
+export function weaponTraining(state) {
+  const t = { simple: false, martial: false, martialIf: [] };
+  const entries = classEntries(state);
+  entries.forEach((entry, i) => {
+    const cls = CLASSES[entry.key];
+    const text = i === 0 ? (cls.weaponProf || "") : (cls.multiclassGrants || "");
+    if (/Simple/.test(text) || i === 0) t.simple = t.simple || /Simple/.test(text);
+    const cond = text.match(/Martial weapons with the ([\w ]+?) property/);
+    if (cond) cond[1].split(/ or /).forEach((p) => t.martialIf.push(p.trim()));
+    else if (/Martial weapons/.test(text)) t.martial = true;
+    const ch = entry.choices || {};
+    if (ch.divineOrder === "protector" || ch.primalOrder === "warden") t.martial = true;
+  });
+  if (ownedFeatKeys(state).includes("martialWeaponTraining")) { t.simple = true; t.martial = true; }
+  return t;
+}
+
+export function isWeaponProficient(state, key) {
+  const w = WEAPONS[key];
+  if (!w) return false;
+  const t = weaponTraining(state);
+  if (w.category === "simple") return t.simple;
+  return t.martial || t.martialIf.some((p) => w.properties.includes(p));
+}
+
+/* Armor training: light / medium / heavy / shield. */
+export function armorTraining(state) {
+  const set = new Set();
+  const read = (text) => {
+    if (/\bLight\b/.test(text)) set.add("light");
+    if (/\bMedium\b/.test(text)) set.add("medium");
+    if (/\bHeavy\b/.test(text)) set.add("heavy");
+    if (/Shield/.test(text)) set.add("shield");
+  };
+  classEntries(state).forEach((entry, i) => {
+    const cls = CLASSES[entry.key];
+    read(i === 0 ? (cls.armorTraining || "") : (cls.multiclassGrants || ""));
+    const ch = entry.choices || {};
+    if (ch.divineOrder === "protector") set.add("heavy");
+    if (ch.primalOrder === "warden") set.add("medium");
+  });
+  const feats = ownedFeatKeys(state);
+  if (feats.includes("lightlyArmored")) { set.add("light"); set.add("shield"); }
+  if (feats.includes("moderatelyArmored")) { set.add("medium"); set.add("shield"); }
+  if (feats.includes("heavilyArmored")) set.add("heavy");
+  return set;
+}
+
+/* ---- Weapon Mastery ---- */
+
+/* One slot group per class with Weapon Mastery: count from the class's
+   "Weapon Mastery" table column; which weapons it can pick from
+   `masteryChoice` (melee | any | proficient). */
+export function masterySlots(state) {
+  return classEntries(state).map((entry, classIndex) => {
+    const cls = CLASSES[entry.key];
+    const track = (cls.tracks || []).find((t) => t.label === "Weapon Mastery");
+    if (!track || !cls.masteryChoice) return null;
+    const count = track.byLevel[(entry.levels || 1) - 1] || 0;
+    const allowed = (key) => {
+      const w = WEAPONS[key];
+      if (!w) return false;
+      if (cls.masteryChoice === "melee") return w.type === "melee";
+      if (cls.masteryChoice === "proficient") return isWeaponProficient(state, key);
+      return true;
+    };
+    const chosen = (entry.masteries || []).filter((k) => allowed(k));
+    return { classIndex, className: cls.name, entry, count, allowed, chosen, rule: cls.masteryChoice };
+  }).filter(Boolean);
+}
+
+export function masteredWeapons(state) {
+  return new Set(masterySlots(state).flatMap((s) => s.chosen));
+}
+
+/* ---- Attacks ---- */
+
+function hasFightingStyle(state, key) {
+  return classEntries(state).some((e) => Object.values(e.choices || {}).includes(key));
+}
+
+/* One line per kind of weapon carried, plus an Unarmed Strike. */
+export function attacks(state) {
+  const mods = abilityMods(state);
+  const pb = profBonus(totalLevel(state));
+  const mastered = masteredWeapons(state);
+  const archery = hasFightingStyle(state, "archery");
+  const signed = (n) => (n === 0 ? "" : n > 0 ? ` + ${n}` : ` - ${-n}`);
+  const out = []; const seen = new Set();
+  (state.inventory || []).forEach((it) => {
+    const info = itemInfo(it.ref);
+    if (!info || info.kind !== "weapon" || seen.has(info.key)) return;
+    seen.add(info.key);
+    const w = info;
+    const finesse = w.properties.includes("Finesse");
+    const ability = w.type === "ranged" ? "dex" : (finesse && mods.dex > mods.str ? "dex" : "str");
+    const proficient = isWeaponProficient(state, info.key);
+    const toHit = mods[ability] + (proficient ? pb : 0) + (archery && w.type === "ranged" ? 2 : 0);
+    out.push({
+      key: info.key, name: w.name, ability, proficient, toHit,
+      damage: `${w.damage}${signed(mods[ability])} ${w.damageType}`,
+      versatile: w.versatile ? `${w.versatile}${signed(mods[ability])}` : null,
+      range: w.range || null,
+      properties: w.properties, propertiesText: w.propertiesText,
+      mastery: mastered.has(info.key) ? w.mastery : null,
+      weaponMastery: w.mastery
+    });
+  });
+  out.push({
+    key: "unarmed", name: "Unarmed Strike", ability: "str", proficient: true, toHit: mods.str + pb,
+    damage: `${Math.max(0, 1 + mods.str)} Bludgeoning`, properties: [], propertiesText: "", mastery: null
+  });
+  return out;
+}
+
+/* ---- Weight ---- */
+
+export function carriedWeight(state) {
+  return (state.inventory || []).reduce((n, it) => n + itemWeight(it), 0);
+}
+
+/* Strength × 15 lb. for a Small or Medium creature; Goliath's Powerful
+   Build counts one size larger (× 30). */
+export function carryingCapacity(state) {
+  const str = finalAbilities(state).str;
+  return str * (state.speciesKey === "goliath" ? 30 : 15);
+}
+
+export function equipmentStepIssues(state) {
+  const issues = [];
+  masterySlots(state).forEach((s) => {
+    if (s.chosen.length !== s.count) issues.push(`${s.className}: choose ${s.count} weapon${s.count === 1 ? "" : "s"} for Weapon Mastery (${s.chosen.length} chosen).`);
+  });
+  return issues;
+}
+
 /* ---------------- Armour class ---------------- */
 
 /* Unarmored Defense can come from the class (Barbarian, Monk) or from a
@@ -272,8 +520,10 @@ export function acDetail(state) {
   const cls = first ? CLASSES[first.key] : null;
   const eq = cls && eqKey ? (cls.equipment || []).find((e) => e.key === eqKey) : null;
 
-  const armorKey = state.armorOverride || (eq ? eq.armor : "none");
-  const hasShield = state.shieldOverride != null ? state.shieldOverride : !!(eq && eq.shield);
+  /* Worn armor from the Equipment step wins; before that, the class kit's. */
+  const worn = state.worn;
+  const armorKey = worn ? (worn.armor || "none") : (state.armorOverride || (eq ? eq.armor : "none"));
+  const hasShield = worn ? !!worn.shield : (state.shieldOverride != null ? state.shieldOverride : !!(eq && eq.shield));
   const armor = ARMOR[armorKey] || ARMOR.none;
 
   let best = { value: armor.base, source: armor.name, shield: hasShield };

@@ -21,6 +21,8 @@ import { SPECIES, SPECIES_KEYS } from "./data/species.js";
 import { BACKGROUNDS, BACKGROUND_KEYS } from "./data/backgrounds.js";
 import { FEATS } from "./data/feats.js";
 import { SPELLS } from "./data/spells.js";
+import { WEAPONS, AMMUNITION, ARMOR_DETAILS, TOOLS, GEAR } from "./data/equipment.js";
+import { WEAPON_PROPERTIES, WEAPON_MASTERIES } from "./data/weapon-rules.js";
 import * as R from "./rules.js";
 import { STEPS, STEP_LABEL, defaultState, newClassEntry, loadDraft, saveDraft,
          clearDraft, loadIndex, saveCharacter, loadCharacter, deleteCharacter,
@@ -286,6 +288,7 @@ function stepIssues(key) {
     case "hp":         return R.hpStepIssues(state);
     case "feats":      return R.featStepIssues(state);
     case "spells":     return R.spellStepIssues(state);
+    case "equipment":  return R.equipmentStepIssues(state);
     case "identity":   return state.alignment ? [] : ["Choose an alignment."];
     default:           return [];
   }
@@ -356,6 +359,7 @@ const BUILDERS = {
   hp: buildHpStep,
   feats: buildFeatsStep,
   spells: buildSpellsStep,
+  equipment: buildEquipmentStep,
   identity: buildIdentityStep,
   sheet: buildSheetStep
 };
@@ -2011,7 +2015,104 @@ function flatSpellPicker(w, pickKey, pool, target, label, hint) {
 }
 
 /* =======================================================================
-   Step 8 — Details
+   Step 8 — Equipment (tables in data/equipment.js; rules in rules.js)
+   First version: starting kit → inventory, worn armor/shield, Weapon
+   Mastery picks, inventory with quantities, coins, weight. Still to do:
+   an add-item browser and attack lines on the sheet (see PROGRESS.md).
+   ======================================================================= */
+
+function buildEquipmentStep(panel) {
+  panel.appendChild(h("h2", { text: "Equipment" }));
+  panel.appendChild(h("p", { class: "lede", text:
+    "Load your starting equipment, choose what armor you wear, and pick your Weapon Mastery weapons." }));
+
+  /* Starting equipment. */
+  const bg = BACKGROUNDS[state.backgroundKey];
+  panel.appendChild(h("fieldset", {},
+    h("legend", { text: "Starting equipment" }),
+    bg ? h("div", {}, ["A", "B"].map((opt) => h("label", { class: "optrow" },
+      h("input", { type: "radio", name: "bgEquipment", checked: state.bgEquipment === opt,
+        onchange: () => { state.bgEquipment = opt; rerender(); } }),
+      h("span", {}, h("b", { text: `${bg.name} ${opt}. ` }), opt === "A" ? bg.equipment.replace(/\s*\(or 50 GP\)$/, "") : "50 GP")))) : null,
+    h("div", { class: "hp-actions" },
+      h("button", { class: "btn small", type: "button", onclick: () => {
+        if (state.inventory.length && !confirm("Replace your current inventory and coins with your starting equipment?")) return;
+        const kit = R.startingEquipment(state);
+        state.inventory = kit.items; state.coins = kit.coins; state.worn = kit.worn;
+        rerender();
+      } }, "Fill inventory from starting equipment"))
+  ));
+
+  /* Worn armor and shield. */
+  const owned = state.inventory.map((it) => R.itemInfo(it.ref)).filter((i) => i && i.kind === "armor");
+  const armors = owned.filter((i) => i.key !== "shield");
+  const hasShield = owned.some((i) => i.key === "shield");
+  const worn = state.worn || { armor: null, shield: false };
+  const training = R.armorTraining(state);
+  const ac = R.acDetail(state);
+  const wornArmor = worn.armor ? ARMOR[worn.armor] : null;
+  const warn = [];
+  if (wornArmor && !training.has(wornArmor.category)) warn.push(`You lack ${wornArmor.category} armor training: Disadvantage on Strength and Dexterity D20 Tests, and you can't cast spells.`);
+  if (worn.shield && !training.has("shield")) warn.push("You lack Shield training: no AC bonus from it.");
+  if (wornArmor && wornArmor.strReq && R.finalAbilities(state).str < wornArmor.strReq) warn.push(`Strength below ${wornArmor.strReq}: your Speed drops by 10 ft.`);
+  if (wornArmor && wornArmor.stealthDis) warn.push("Disadvantage on Dexterity (Stealth) checks.");
+  panel.appendChild(h("fieldset", {},
+    h("legend", { text: `Armor worn — AC ${ac.total}` }),
+    h("select", { "aria-label": "Armor worn", onchange: (e) => { state.worn = { ...worn, armor: e.target.value || null }; rerender(); } },
+      h("option", { value: "", selected: !worn.armor }, "No armor"),
+      armors.map((a) => h("option", { value: a.key, selected: worn.armor === a.key }, `${a.name} (AC ${a.ac})`))),
+    hasShield ? h("label", { class: "optrow" },
+      h("input", { type: "checkbox", checked: !!worn.shield, onchange: (e) => { state.worn = { ...worn, shield: e.target.checked }; rerender(); } }),
+      h("span", { text: "Shield (+2 AC; Utilize action to don or doff)" })) : null,
+    armors.length || hasShield ? null : h("div", { class: "hint", text: "No armor in your inventory." }),
+    warn.map((t) => h("div", { class: "hint warn", text: t }))
+  ));
+
+  /* Weapon Mastery. */
+  R.masterySlots(state).forEach((slot) => {
+    const entry = slot.entry;
+    panel.appendChild(h("fieldset", {},
+      h("legend", { text: `${slot.className} Weapon Mastery — choose ${slot.count}` }),
+      h("div", { class: "chip-select" },
+        Object.entries(WEAPONS).filter(([k]) => slot.allowed(k)).map(([k, w]) => {
+          const on = slot.chosen.includes(k);
+          const full = !on && slot.chosen.length >= slot.count;
+          return h("button", {
+            class: `chip${on ? " on" : ""}${full ? " disabled" : ""}`, type: "button", disabled: full,
+            title: `${w.mastery}: ${WEAPON_MASTERIES[w.mastery] || ""}`,
+            onclick: () => { entry.masteries = on ? slot.chosen.filter((x) => x !== k) : [...slot.chosen, k]; rerender(); }
+          }, `${w.name} (${w.mastery})`);
+        })),
+      h("div", { class: "hint", text: `${slot.chosen.length} of ${slot.count} chosen. Changeable after a Long Rest.` })
+    ));
+  });
+
+  /* Inventory. */
+  const weight = R.carriedWeight(state), cap = R.carryingCapacity(state);
+  panel.appendChild(h("fieldset", {},
+    h("legend", { text: `Inventory — ${Math.round(weight * 10) / 10} / ${cap} lb.` }),
+    state.inventory.length ? h("ul", { class: "feat-list" }, state.inventory.map((it, i) => {
+      const info = R.itemInfo(it.ref);
+      const detail = info && info.kind === "weapon" ? `${info.damage} ${info.damageType}${info.propertiesText ? "; " + info.propertiesText : ""}; mastery ${info.mastery}`
+        : info && info.contents ? `Contains: ${info.contents.join(", ")}` : (it.note || "");
+      return h("li", {},
+        h("input", { type: "number", min: 0, value: it.qty, style: "width:4em", "aria-label": `${R.itemName(it)} quantity`,
+          onchange: (e) => { it.qty = Math.max(0, Number(e.target.value) || 0); rerender(); } }),
+        " ", h("b", { text: R.itemName(it) }), detail ? ` — ${detail}` : "",
+        " ", h("button", { class: "btn small ghost", type: "button", onclick: () => { state.inventory.splice(i, 1); rerender(); } }, "Remove"));
+    })) : h("div", { class: "hint", text: "Empty — fill it from your starting equipment above." }),
+    h("div", { class: "optrow" }, ["cp", "sp", "ep", "gp", "pp"].map((c) => h("label", {},
+      h("span", { text: ` ${c.toUpperCase()} ` }),
+      h("input", { type: "number", min: 0, value: state.coins[c] || 0, style: "width:5em",
+        onchange: (e) => { state.coins[c] = Math.max(0, Number(e.target.value) || 0); rerender(); } }))))
+  ));
+
+  const issues = issueList("equipment");
+  if (issues) panel.appendChild(issues);
+}
+
+/* =======================================================================
+   Step 9 — Details
    ======================================================================= */
 
 function buildIdentityStep(panel) {

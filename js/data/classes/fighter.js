@@ -10,6 +10,7 @@ export const fighter = {
   saves: ["str", "con"],
   skillCount: 2,
   skillOptions: ["acrobatics", "animalHandling", "athletics", "history", "insight", "intimidation", "persuasion", "perception", "survival"],
+  masteryChoice: "any",   // which weapon kinds Weapon Mastery can pick (melee | any | proficient)
   weaponProf: "Simple and Martial weapons",
   armorTraining: "Light, Medium, and Heavy armor, and Shields",
   toolProf: null,

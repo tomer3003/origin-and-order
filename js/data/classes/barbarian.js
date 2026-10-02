@@ -10,6 +10,7 @@ export const barbarian = {
   saves: ["str", "con"],
   skillCount: 2,
   skillOptions: ["animalHandling", "athletics", "intimidation", "nature", "perception", "survival"],
+  masteryChoice: "melee",   // which weapon kinds Weapon Mastery can pick (melee | any | proficient)
   weaponProf: "Simple and Martial weapons",
   armorTraining: "Light and Medium armor, and Shields",
   toolProf: null,

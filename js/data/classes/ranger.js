@@ -13,6 +13,7 @@ export const ranger = {
   skillCount: 3,
   multiclassSkillCount: 1,
   skillOptions: ["animalHandling", "athletics", "insight", "investigation", "nature", "perception", "stealth", "survival"],
+  masteryChoice: "proficient",   // which weapon kinds Weapon Mastery can pick (melee | any | proficient)
   weaponProf: "Simple and Martial weapons",
   armorTraining: "Light and Medium armor, and Shields",
   toolProf: null,

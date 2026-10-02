@@ -11,6 +11,7 @@ export const paladin = {
   saves: ["wis", "cha"],
   skillCount: 2,
   skillOptions: ["athletics", "insight", "intimidation", "medicine", "persuasion", "religion"],
+  masteryChoice: "proficient",   // which weapon kinds Weapon Mastery can pick (melee | any | proficient)
   weaponProf: "Simple and Martial weapons",
   armorTraining: "Light, Medium, and Heavy armor, and Shields",
   toolProf: null,
