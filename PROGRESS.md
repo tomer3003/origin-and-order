@@ -163,7 +163,7 @@ The live site was confirmed serving the modular app with a clean console,
 and the layout has no horizontal overflow at 375 px.
 
 ### In progress
-- Nothing. Phase C is complete; next up is Phase D (spell levels 2-9 first).
+- Nothing. Next up: spell levels 3-9 with the tools/ pipeline (see below).
 
 ### Done — Phase A: breadth first (all seven items)
 
@@ -589,8 +589,47 @@ feat raised (`abilityBumps`).
   2024 level-1 spells (e.g. Ray of Sickness), so school/ritual pools for
   these feats are slightly short. Fold into the Phase D transcription pass.
 
+### Done — every cantrip, level 1 and level 2 spell (Phase D, part 1)
+
+`spells.js` now holds all 161 PHB spells at levels 0-2 (34 + 64 + 63),
+generated from the PDF rather than typed: 80 were new (5 cantrips incl.
+Toll the Dead / Starry Wisp / Sorcerous Burst, 15 level-1 incl. Ray of
+Sickness / Hex / the smites, 60 level-2), and **every existing entry's book
+fields were replaced with the PDF's** — the comparison showed the earlier
+"full text" pass had in fact abridged several (Elementalism, Find Familiar,
+Tenser's Floating Disk, Silent Image, Unseen Servant…) and had real errors:
+Color Spray was missing Bard, Acid Splash is Evocation in 2024 (not
+Conjuration), Chill Touch's range is Touch, Elementalism's duration is
+Instantaneous, and ranges are just "Self" (the area is in the text).
+Hand-written TL;DR fields (roll/save/damage/effect/scaling and the cantrip
+notes) were kept for existing spells; new spells get auto-derived roll,
+save and damage (with a small override table) plus a hand-written `effect`
+line each. `ritual` now comes from the casting time; the TL;DR derives
+"requires Concentration" from the duration. `grantedOnly` is gone.
+
+**Pipeline (reuse for levels 3-9)**, scripts in `tools/`, run from the
+scratchpad with Git Bash's perl:
+1. `pdftotext -enc UTF-8 <PHB.pdf> phb-raw.txt` (raw mode — paragraphs stay
+   on one line; `-enc UTF-8` matters, the default is Latin-1).
+2. `perl parse-spells.pl phb-raw.txt > spells.jsonl` — all 391 spells.
+3. Filter the levels wanted into `low.jsonl` (`grep '"level": [012],'`), then
+   `perl prep.pl low.jsonl js/data/spells.js normalized.json`.
+4. `perl gen.pl normalized.json js/data/spells.js > new-spells.js`; add an
+   `%EFFECT` line for every new spell (it warns about missing ones) and
+   `%DAMAGE` overrides where the regex misreads damage.
+5. Check: `perl lists.pl` (needs `pdftotext -layout -enc UTF-8 … phb8.txt`)
+   compares every class's "Level N <Class> Spells" table with the spell
+   headers — all 22 class/level lists at 0-2 match exactly. `perl ligs.pl`
+   finds words whose fi/fl/ff ligature the PDF dropped (only "rst" → "first"
+   at these levels; `fixText` in gen.pl repairs known ones).
+Known PDF quirks: stat blocks of summon spells run into the higher-level
+paragraph (moved back into the text), tables flatten (Augury's rewritten by
+hand), picture captions leak as "↑ NAME", and two level-3+/6 spells (Phantom
+Steed, Summon Fiend) have a caption inside their header line — fix those
+when doing level 3+.
+
 ### Then — Phase D: depth
-Spell levels 2-9 (see the Phase B coverage note above), full subclass
+Spell levels 3-9 (0-2 are done, see above), full subclass
 features at every level, full equipment tables, more species-adjacent
 polish (the Medium-or-Small size choice noted earlier). Class by class.
 

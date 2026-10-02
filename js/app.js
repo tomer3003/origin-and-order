@@ -177,7 +177,7 @@ function spellTLDR(spell) {
   else bits.push("No attack roll or save");
   if (spell.damage) bits.push(spell.damage);
   if (spell.effect) bits.push(spell.effect);
-  if (spell.concentration) bits.push("requires Concentration");
+  if (/^Concentration/.test(spell.duration || "")) bits.push("requires Concentration");
   bits.push(spellScalingNote(spell));
   return bits.filter(Boolean).map((b) => b.replace(/\.$/, "")).join(" — ") + ".";
 }
