@@ -163,7 +163,7 @@ The live site was confirmed serving the modular app with a clean console,
 and the layout has no horizontal overflow at 375 px.
 
 ### In progress
-- Nothing. Next candidates: Warlock Mystic Arcanum picker, then subclass depth (see Phase D).
+- Nothing. Next candidates: subclass depth, then equipment (see Phase D and the errata log).
 
 ### Done — Phase A: breadth first (all seven items)
 
@@ -729,15 +729,35 @@ The DMG and Monster Manual (2025) have their own errata documents on D&D
 Beyond; not relevant yet (this builder doesn't use DMG/MM content) — check
 them if Wild Shape forms, familiars, or magic items are ever added.
 
-**Gap noticed, not built**: Warlock Mystic Arcanum (`mysticArcanum` in
-warlock.js: one level 6/7/8/9 spell at Warlock 11/13/15/17) has data but no
-picker — Pact Magic caps the Warlock pool at level 5, so those spells can't
-be chosen yet.
+### Done — Warlock Mystic Arcanum picker
+
+PHB rule: at Warlock 11/13/15/17 choose one Warlock spell of level 6/7/8/9,
+cast once per Long Rest without a slot; whenever you gain a Warlock level
+you may replace one arcanum spell with another of the same level.
+- `R.arcanumSlotsFor(entry, caster, pick)` reads the class's existing
+  `mysticArcanum` table ({ classLevel: spellLevel }), so it's data-driven;
+  `spellWorkFor()` exposes it as `w.arcanum` (never for subclass casters).
+  Picks live in `spellPicks[i].arcanum` = { "6": key, ... } (migrate()
+  normalizes it); a pick no longer in the pool reads as unchosen.
+- Pools are separate from Pact Magic (which stops at level 5) and come from
+  `spellPoolFor` at exactly that spell level — the Warlock L6-9 lists were
+  already verified against the PHB class tables.
+- UI: `arcanumPicker()` renders a single-choice chip row inside the
+  walkthrough row for the granting Warlock level (same placement idea as
+  feat spells); re-choosable, which covers the replace-on-level-up rule.
+  Level-up mode shows the new level's arcanum, plus any older arcanum left
+  unpicked. `spellStepIssues` gates on every owed arcanum. The sheet lists
+  them as "Mystic Arcanum (1/Long Rest each, no slot)".
+- Verified live: Warlock 13 owed L6 (7 options) and L7 (4 options) inside
+  the Level 11 / Level 13 rows, Continue gated until both chosen; level-up
+  14 → 15 showed only the L8 arcanum plus that level's new spell, saved all
+  three; sheet listed them. No console errors.
 
 ### Then — Phase D: depth
-Warlock Mystic Arcanum picker (above), full subclass features at every
-level, full equipment tables, more species-adjacent polish (the
-Medium-or-Small size choice noted earlier). Class by class.
+Full subclass features at every level, full equipment tables, more
+species-adjacent polish (the Medium-or-Small size choice noted earlier).
+Class by class. Check the errata log above before starting equipment or
+anything with creature stat blocks.
 
 ---
 

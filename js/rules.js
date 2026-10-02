@@ -518,7 +518,33 @@ function pickEntry(state, classIndex) {
      guaranteed `spellbook` growth so the growth walkthrough's counts stay
      exact. Wizard-only in practice (the only current "spellbook" caster). */
   if (!Array.isArray(p.extra)) p.extra = [];
+  /* Warlock Mystic Arcanum: one chosen spell per arcanum spell level,
+     { "6": key, "7": key, ... } — see arcanumSlotsFor(). */
+  if (!p.arcanum || typeof p.arcanum !== "object" || Array.isArray(p.arcanum)) p.arcanum = {};
   return p;
+}
+
+/* Mystic Arcanum (Warlock 11/13/15/17): one Warlock spell of level 6/7/8/9
+   each, cast once per Long Rest without a slot. These sit outside Pact
+   Magic, whose slots stop at level 5, so they're picked separately from
+   the known-spell list. Data-driven off the class's `mysticArcanum` table
+   ({ classLevel: spellLevel }). RAW also lets you replace one arcanum spell
+   whenever you gain a Warlock level; the picker just stays re-choosable. */
+export function arcanumSlotsFor(entry, caster, pick) {
+  const table = (CLASSES[entry.key] || {}).mysticArcanum;
+  if (!table) return [];
+  return Object.entries(table)
+    .filter(([classLevel]) => (entry.levels || 0) >= Number(classLevel))
+    .map(([classLevel, spellLevel]) => {
+      const pool = spellPoolFor(caster, entry.levels || 0, spellLevel, spellLevel);
+      const chosen = pick.arcanum[String(spellLevel)];
+      return {
+        classLevel: Number(classLevel),
+        spellLevel,
+        pool,
+        chosen: pool.includes(chosen) ? chosen : null
+      };
+    });
 }
 
 /* Highest spell level a caster of this type can currently reach, read off
@@ -618,6 +644,7 @@ export function spellWorkFor(state, classIndex) {
     permanentKey: caster.prepMode === "spellbook" ? "spellbook" : "known",
     pool: spellPoolFor(caster, level, 1, maxLevel),
     preparedTarget,
+    arcanum: fromSubclass ? [] : arcanumSlotsFor(entry, caster, pick),
     pick
   };
 }
@@ -647,6 +674,9 @@ export function spellStepIssues(state) {
         issues.push(`${w.className}: prepare ${w.preparedTarget} spell${w.preparedTarget === 1 ? "" : "s"} (${prepared.length} chosen).`);
       }
     }
+    w.arcanum.forEach((a) => {
+      if (!a.chosen) issues.push(`${w.className}: choose a level ${a.spellLevel} Mystic Arcanum spell.`);
+    });
   });
   featSpellGrants(state).forEach((g) => issues.push(...featSpellIssues(g)));
   return issues;
@@ -733,7 +763,8 @@ export function featSpellIssues(grant) {
 export function allKnownSpellKeys(state) {
   const set = new Set();
   Object.values(state.spellPicks || {}).forEach((p) => {
-    [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || []), ...(p.extra || [])]
+    [...(p.cantrips || []), ...(p.known || []), ...(p.spellbook || []), ...(p.prepared || []), ...(p.extra || []),
+     ...Object.values(p.arcanum || {})]
       .filter(Boolean).forEach((k) => set.add(k));
   });
   featSpellGrants(state).forEach((g) => {

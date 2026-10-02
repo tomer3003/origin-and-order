@@ -1666,7 +1666,8 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     const startIndex = runningTotal;
     runningTotal = row.target;
     const grants = grantsAt(w.classIndex, row.level);
-    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length)) return;
+    const arcana = (w.arcanum || []).filter((a) => a.classLevel === row.level);
+    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length && !arcana.length)) return;
 
     const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
     section.appendChild(h("div", { class: "spell-level-head" },
@@ -1700,12 +1701,43 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     if (w.swapOnLevel && row.level > 1 && list.length >= row.target) {
       section.appendChild(swapControl(w, list, startIndex));
     }
+    arcana.forEach((a) => section.appendChild(arcanumPicker(w, a)));
     grants.forEach((g) => section.appendChild(featSpellGrantBlock(g)));
 
     wrap.appendChild(section);
   });
 
   return wrap;
+}
+
+/* Mystic Arcanum: a single choice of one Warlock spell of the arcanum's
+   level, shown inside the walkthrough row for the Warlock level that grants
+   it. Re-choosable, since RAW lets you replace one arcanum spell whenever
+   you gain a Warlock level. */
+function arcanumPicker(w, a) {
+  const known = R.allKnownSpellKeys(state);
+  return h("div", { class: "feat-grant", style: "margin:6px 0 10px" },
+    h("div", { class: "spell-level-head" },
+      h("span", { text: `Mystic Arcanum — one level ${a.spellLevel} spell` }),
+      h("span", { class: `count${a.chosen ? " full" : ""}`, text: a.chosen ? "1 / 1" : "0 / 1" })),
+    h("div", { class: "hint", text:
+      "Cast it once per Long Rest without a spell slot. Whenever you gain a Warlock level you may replace one arcanum spell with another of the same level." }),
+    h("div", { class: "chip-select", style: "margin-top:4px" },
+      a.pool.map((key) => {
+        const spell = SPELLS[key];
+        const on = a.chosen === key;
+        const dupe = !on && known.has(key);
+        return h("button", {
+          class: `chip${on ? " on" : ""}${dupe ? " dupe" : ""}`,
+          type: "button",
+          title: dupe ? "You already know this from another source" : null,
+          ...tooltipTrigger(() => spellPopoverHtml(spell)),
+          onclick: () => {
+            w.pick.arcanum = { ...w.pick.arcanum, [String(a.spellLevel)]: on ? null : key };
+            rerender();
+          }
+        }, spell.name);
+      })));
 }
 
 /* One optional "replace a spell you know with a different one" control,
@@ -2015,7 +2047,8 @@ function spellNameList(w) {
     ...(w.pick.cantrips || []),
     ...(w.prepMode === "free" || w.prepMode === "spellbook" ? (w.pick.prepared || []) : (w.pick.known || []))
   ].filter(Boolean);
-  if (!readyKeys.length) return null;
+  const arcana = (w.arcanum || []).filter((a) => a.chosen);
+  if (!readyKeys.length && !arcana.length) return null;
 
   const byLevel = new Map();
   readyKeys.forEach((key) => {
@@ -2037,7 +2070,11 @@ function spellNameList(w) {
         h("div", { class: "pss-head", text: `${w.className} — ${lvl === 0 ? "Cantrips" : `Level ${lvl}`}` }),
         names
       );
-    })
+    }),
+    arcana.length ? h("div", { class: "pss-group" },
+      h("div", { class: "pss-head", text: `${w.className} — Mystic Arcanum (1/Long Rest each, no slot)` }),
+      arcana.flatMap((a, i) => [i > 0 ? ", " : null, spellNameEl(a.chosen), ` (${a.spellLevel})`])
+    ) : null
   );
 }
 
@@ -2391,8 +2428,13 @@ function levelUpSpellBlocks(before, index, lvl) {
     const list = (w.permanentList || []).filter(Boolean);
     const row = w.growth.find((r) => r.level === lvl);
     if (list.length < prevTarget) { wrap.appendChild(permanentGrowthWalkthrough(w)); shown = true; }
-    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length)) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
+    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length || w.arcanum.some((a) => a.classLevel === lvl))) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
   }
+
+  /* An arcanum owed from an earlier level that was never picked. */
+  w.arcanum.filter((a) => !a.chosen && a.classLevel !== lvl).forEach((a) => {
+    wrap.appendChild(arcanumPicker(w, a)); shown = true;
+  });
 
   const prepared = (w.pick.prepared || []).filter(Boolean);
   const preparedChanged = !wb || w.preparedTarget !== wb.preparedTarget || w.maxLevel !== wb.maxLevel;

@@ -149,7 +149,8 @@ export function migrate(raw) {
       known: Array.isArray(p.known) ? p.known : [],
       spellbook: Array.isArray(p.spellbook) ? p.spellbook : [],
       prepared: Array.isArray(p.prepared) ? p.prepared : [],
-      extra: Array.isArray(p.extra) ? p.extra : []
+      extra: Array.isArray(p.extra) ? p.extra : [],
+      arcanum: p.arcanum && typeof p.arcanum === "object" && !Array.isArray(p.arcanum) ? { ...p.arcanum } : {}
     };
   });
   /* Version 3: chronological level history for single-step levelling. */
