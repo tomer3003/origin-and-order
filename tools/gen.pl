@@ -52,11 +52,11 @@ my %EFFECT = (
   calmEmotions => "Humanoids in a 20-ft. Sphere either become immune to Charmed and Frightened, or stop being Hostile toward chosen creatures.",
   cloudOfDaggers => "A 5-ft. Cube of daggers damages anyone in it or entering it; move it as a Magic action.",
   continualFlame => "A heatless, permanent flame on an object: Bright Light 20 ft., Dim Light 20 ft. more.",
-  cordonOfArrows => "Plant up to four pieces of ammunition that shoot creatures coming within 30 ft. (1d6 Piercing each on a failed Dex save).",
+  cordonOfArrows => "Plant up to four pieces of ammunition that shoot creatures coming within 30 ft. (2d4 Piercing each on a failed Dex save).",
   crownOfMadness => "A Charmed Humanoid must attack a creature you choose on each of its turns.",
   darkness => "Magical Darkness in a 15-ft. Sphere that Darkvision can't penetrate.",
   darkvision => "A willing creature gains 150-ft. Darkvision for 8 hours.",
-  dragonsBreath => "A willing creature can exhale a 15-ft. Cone of a damage type you choose as a Magic action.",
+  dragonsBreath => "A willing creature can exhale a 15-ft. Cone of a damage type you choose as a Magic action. Half damage on a success.",
   enhanceAbility => "Advantage on ability checks with one chosen ability.",
   enlargeReduce => "Grow or shrink a creature or object one size; Enlarge adds 1d4 to its weapon damage, Reduce subtracts 1d4.",
   enthrall => "Creatures that fail have -10 to Perception checks and Passive Perception.",
@@ -101,6 +101,10 @@ my %EFFECT = (
   zoneOfTruth => "Creatures in a 15-ft. Sphere that fail can't deliberately lie.",
 );
 
+# Level 3-9 effect lines live in their own file.
+my $hiEffects = do "./effects-hi.pl" or die "effects-hi.pl: $@ $!";
+%EFFECT = (%EFFECT, %$hiEffects);
+
 # Damage strings the "XdY Type damage" pattern gets wrong or misses.
 my %DAMAGE = (
   web => undef,
@@ -109,6 +113,22 @@ my %DAMAGE = (
   spiritualWeapon => "1d8 Force + spellcasting modifier",
   dragonsBreath => "3d6 of the chosen type",
   armorOfAgathys => "5 Cold (to melee attackers)",
+  # Levels 3-9: incidental damage (mishaps, backlash, stat blocks) isn't the spell's damage.
+  wish => undef, teleport => undef, dimensionDoor => undef, meldIntoStone => undef,
+  contactOtherPlane => undef, summonUndead => undef, summonAberration => undef,
+  summonConstruct => undef, giantInsect => undef,
+  # ...and spells whose damage is more than one "XdY Type".
+  bestowCurse => "1d8 Necrotic (one curse option)",
+  fireShield => "2d8 Fire or Cold (to melee attackers)",
+  spiritGuardians => "3d8 Radiant or Necrotic",
+  iceStorm => "2d10 Bludgeoning + 4d6 Cold",
+  flameStrike => "5d6 Fire + 5d6 Radiant",
+  destructiveWave => "5d6 Thunder + 5d6 Radiant or Necrotic",
+  jallarzisStormOfRadiance => "2d10 Radiant + 2d10 Thunder",
+  meteorSwarm => "20d6 Fire + 20d6 Bludgeoning",
+  prismaticSpray => "12d6 of a type set by the ray's color (some rays have no damage)",
+  prismaticWall => "12d6 per layer, type set by the layer's color",
+  symbol => "10d10 Necrotic (Death glyph)",
 );
 
 # Book-text repairs the PDF needs.
@@ -116,9 +136,19 @@ sub fixText {
   my $t = shift // '';
   $t =~ s/\s*\x{2191}\s*[A-Z' ]*$//;                       # trailing art arrows / captions
   $t =~ s/\bthe rst\b/the first/g;                          # dropped "fi" ligature
+  $t =~ s/\beff ects\b/effects/g;                           # dropped "ff" ligature
+  $t =~ s/\bup to ve\b/up to five/g;                        # dropped "fi" ligature
   $t =~ s/\bthe spells ends\b/the spell ends/g;             # PDF typo
   $t =~ s/level about (\d)/level above $1/g;                # PDF typo
   $t =~ s/Omens Omen Weal Woe Weal and woe Indifference For Results That Will Be\.\.\. Good Bad Good and bad Neither good nor bad/Omens: Weal (results will be good), Woe (bad), Weal and woe (good and bad), or Indifference (neither good nor bad)./;
+  # Tables the PDF flattens into run-on text, restated row by row.
+  $t =~ s/1d10 1 2.6 7.8 9.10 Behavior for the Turn The target doesn't take an action, and it uses all its movement to move\. Roll 1d4 for the direction: 1, north; 2, east; 3, south; or 4, west\. The target doesn't move or take actions\. The target doesn't move, and it takes the Attack action to make one melee attack against a random creature within reach\. If none are within reach, the target takes no action\. The target chooses its behavior\./1: The target doesn't take an action, and it uses all its movement to move; roll 1d4 for the direction (1, north; 2, east; 3, south; 4, west). 2-6: The target doesn't move or take actions. 7-8: The target doesn't move, and it takes the Attack action to make one melee attack against a random creature within reach; if none are within reach, it takes no action. 9-10: The target chooses its behavior./;
+  $t =~ s/Precipitation Stage 1 2 3 4 5 Condition Clear Light clouds Overcast or ground fog Rain, hail, or snow Torrential rain, driving hail, or blizzard Temperature Stage 1 2 3 4 5 6 Condition Heat wave Hot Warm Cool Cold Freezing Wind Stage 1 2 3 4 5 Condition Calm Moderate wind Strong wind Gale Storm/Precipitation: 1 Clear, 2 Light clouds, 3 Overcast or ground fog, 4 Rain, hail, or snow, 5 Torrential rain, driving hail, or blizzard. Temperature: 1 Heat wave, 2 Hot, 3 Warm, 4 Cool, 5 Cold, 6 Freezing. Wind: 1 Calm, 2 Moderate wind, 3 Strong wind, 4 Gale, 5 Storm./;
+  $t =~ s/Materials Material Vegetable matter Stone or crystal Precious metals Gems Adamantine or mithral Duration 24 hours 12 hours 1 hour 10 minutes 1 minute/Materials: vegetable matter, 24 hours; stone or crystal, 12 hours; precious metals, 1 hour; gems, 10 minutes; adamantine or mithral, 1 minute./;
+  $t =~ s/Divine Word Effects Hit Points 0.20 21.30 31.40 41.50 Effect The target dies\. The target has the Blinded, Deafened, and Stunned conditions for 1 hour\. The target has the Blinded and Deafened conditions for 10 minutes\. The target has the Deafened condition for 1 minute\./Divine Word Effects: 0-20 Hit Points, the target dies. 21-30 Hit Points, the target has the Blinded, Deafened, and Stunned conditions for 1 hour. 31-40 Hit Points, the target has the Blinded and Deafened conditions for 10 minutes. 41-50 Hit Points, the target has the Deafened condition for 1 minute./;
+  $t =~ s/1d10 Species Aasimar Dragonborn Dwarf Elf Gnome Goliath Halfling Human Orc Tiefling/1 Aasimar, 2 Dragonborn, 3 Dwarf, 4 Elf, 5 Gnome, 6 Goliath, 7 Halfling, 8 Human, 9 Orc, 10 Tiefling./;
+  $t =~ s/Your Knowledge of the Target Is\.\.\. Secondhand \(heard of the target\) Firsthand \(met the target\) Extensive \(know the target well\) Save Modifier \+5 \+0 .5 You Have the Target's\.\.\. Picture or other likeness Garment or other possession Body part, lock of hair, or bit of nail Save Modifier .2 .4 .10/Your knowledge of the target: secondhand (heard of the target) +5; firsthand (met the target) +0; extensive (know the target well) -5. You have the target's: picture or other likeness -2; garment or other possession -4; body part, lock of hair, or bit of nail -10./;
+  $t =~ s/Teleportation Outcome Familiarity Permanent circle Linked object Very familiar Seen casually Viewed once or described False destination Mishap .*? On Target 01.00 01.00 25.00 54.00 74.00 . /Teleportation Outcome (d100): Permanent circle, On Target 01-00. Linked object, On Target 01-00. Very familiar, Mishap 01-05, Similar Area 06-13, Off Target 14-24, On Target 25-00. Seen casually, Mishap 01-33, Similar Area 34-43, Off Target 44-53, On Target 54-00. Viewed once or described, Mishap 01-43, Similar Area 44-53, Off Target 54-73, On Target 74-00. False destination, Mishap 01-50, Similar Area 51-00. /;
   $t =~ s/\s+/ /g; $t =~ s/^\s+|\s+$//g;
   return $t;
 }
@@ -146,6 +176,10 @@ for my $key (keys %$norm) {
   $s{$_} = $b->{$_} for qw(name level school classes time range components duration);
   $s{text} = fixText($b->{text});
   my $hl = fixText($b->{higherLevel});
+  # Animate Objects prints its stat block after the higher-level sentence.
+  if ($hl =~ /^(.*? for each spell slot level above \d\.)\s+(Animated Object\b.*)$/) {
+    $hl = $1; $s{text} .= " Stat block — $2";
+  }
   $s{higherLevel} = $hl if length $hl;
   $s{ritual} = JSON::PP::true if $b->{time} =~ /Ritual/;
 
@@ -166,6 +200,7 @@ for my $key (keys %$norm) {
   }
   $hand{scaling} = autoScaling($hl, $ord) if $s{level} > 0 && !exists $hand{scaling};
   $hand{damage} = $DAMAGE{$key} if exists $DAMAGE{$key};
+  $hand{effect} = $EFFECT{$key} if exists $EFFECT{$key};   # the table here is the source of truth
   %s = (%s, %hand);
   $OUT{$key} = \%s;
 }

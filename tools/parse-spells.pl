@@ -58,6 +58,8 @@ for my $n (0..$#heads) {
 
   my ($time, $range, $comp, $dur);
   my $flat = $joined; $flat =~ s/\n/ \x{1} /g;   # keep paragraph marks
+  # An all-caps picture caption sometimes lands before "Casting Time:".
+  $flat =~ s/^\s*[A-Z][A-Z'\x{2019} ()]+?\s*(?:\x{1}\s*)?(?=Casting Time:)//;
   $flat =~ s/^\s*Casting Time:\s*(.*?)\s*(?:\x{1}\s*)?Range:\s*//s and $time = $1;
   $flat =~ s/^(.*?)\s*(?:\x{1}\s*)?Components?:\s*//s and $range = $1;
   $flat =~ s/^(.*?)\s*(?:\x{1}\s*)?Duration:\s*//s and $comp = $1;

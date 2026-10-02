@@ -1,9 +1,9 @@
 use strict; use warnings; use utf8; use JSON::PP; binmode STDOUT, ':utf8';
-open my $nf, '<', 'normalized.json'; my $N = JSON::PP->new->utf8->decode(do { local $/; <$nf> });
+open my $nf, '<', ($ARGV[0] // 'normalized.json'); my $N = JSON::PP->new->utf8->decode(do { local $/; <$nf> });
 open my $f, '<:utf8', 'phb8.txt'; my @L = <$f>; my $txt = join '', @L; $txt =~ s/\x{2019}/'/g;
 my @lines = split /\n/, $txt;
 for my $c (qw(Bard Cleric Druid Paladin Ranger Sorcerer Warlock Wizard)) {
-  for my $n (0..2) {
+  for my $n (0..9) {
     my $h = $n == 0 ? qr/Cantrips \(Level 0 $c Spells\)/ : qr/Level $n $c Spells/;
     my ($start) = grep { $lines[$_] =~ $h } 0..$#lines;
     next unless defined $start;
