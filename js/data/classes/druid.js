@@ -86,6 +86,25 @@ export const druid = {
     land: {
       name: "Circle of the Land",
       blurb: "Magic shaped by a chosen kind of terrain",
+      /* Circle Spells depend on the land chosen after each Long Rest
+         (subclass choice "land" below); keyed by Druid level. */
+      landSpells: {
+        arid:      { 3: ["blur", "burningHands", "fireBolt"], 5: ["fireball"], 7: ["blight"], 9: ["wallOfStone"] },
+        polar:     { 3: ["fogCloud", "holdPerson", "rayOfFrost"], 5: ["sleetStorm"], 7: ["iceStorm"], 9: ["coneOfCold"] },
+        temperate: { 3: ["mistyStep", "shockingGrasp", "sleep"], 5: ["lightningBolt"], 7: ["freedomOfMovement"], 9: ["treeStride"] },
+        tropical:  { 3: ["acidSplash", "rayOfSickness", "web"], 5: ["stinkingCloud"], 7: ["polymorph"], 9: ["insectPlague"] }
+      },
+      choices: [
+        {
+          key: "land", level: 3, label: "Land type", note: "Changeable after each Long Rest.",
+          options: [
+            { key: "arid", name: "Arid", text: "Blur, Burning Hands, Fire Bolt; then Fireball, Blight, Wall of Stone. Nature's Ward: Fire." },
+            { key: "polar", name: "Polar", text: "Fog Cloud, Hold Person, Ray of Frost; then Sleet Storm, Ice Storm, Cone of Cold. Nature's Ward: Cold." },
+            { key: "temperate", name: "Temperate", text: "Misty Step, Shocking Grasp, Sleep; then Lightning Bolt, Freedom of Movement, Tree Stride. Nature's Ward: Lightning." },
+            { key: "tropical", name: "Tropical", text: "Acid Splash, Ray of Sickness, Web; then Stinking Cloud, Polymorph, Insect Plague. Nature's Ward: Poison." }
+          ]
+        }
+      ],
       features: {
         3: [
           { name: "Circle of the Land Spells", text: "After each Long Rest pick a land type — arid, polar, temperate, or tropical — and have its spells for your level and lower prepared. Arid: Blur, Burning Hands, Fire Bolt, then Fireball, Blight, Wall of Stone. Polar: Fog Cloud, Hold Person, Ray of Frost, then Sleet Storm, Ice Storm, Cone of Cold. Temperate: Misty Step, Shocking Grasp, Sleep, then Lightning Bolt, Freedom of Movement, Tree Stride. Tropical: Acid Splash, Ray of Sickness, Web, then Stinking Cloud, Polymorph, Insect Plague." },
@@ -137,6 +156,9 @@ export const druid = {
     stars: {
       name: "Circle of the Stars",
       blurb: "Secrets read from the constellations",
+      grantedSpells: {
+        3: [{ spell: "guidance", note: "while holding your Star Map" }, { spell: "guidingBolt", note: "while holding your Star Map; also castable free (Wis mod times per Long Rest)" }]
+      },
       features: {
         3: [
           { name: "Star Map", text: "A Tiny star chart usable as your Spellcasting Focus. While holding it you have Guidance and Guiding Bolt prepared and can cast Guiding Bolt free a number of times equal to your Wisdom modifier (min 1) per Long Rest. A 1-hour ceremony replaces a lost map." },

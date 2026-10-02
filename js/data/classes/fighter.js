@@ -151,6 +151,7 @@ export const fighter = {
     psiWarrior: {
       name: "Psi Warrior",
       blurb: "Telekinetic force folded into weapon and shield",
+      grantedSpells: { 18: [{ spell: "telekinesis", ability: "int", note: "free once per Long Rest, or spend a Psionic Energy die" }] },
       psionicDice: {
         3: { count: 4, die: "d6" }, 5: { count: 6, die: "d8" }, 9: { count: 8, die: "d8" },
         11: { count: 8, die: "d10" }, 13: { count: 10, die: "d10" }, 17: { count: 12, die: "d12" }

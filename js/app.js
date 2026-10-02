@@ -539,7 +539,7 @@ function subclassSummary(entry, cls) {
 function pruneEntry(entry) {
   const cls = CLASSES[entry.key];
   if (entry.subclass && (entry.levels || 0) < cls.subclassLevel) entry.subclass = null;
-  (cls.choices || []).forEach((choice) => {
+  R.choicesFor(entry).forEach((choice) => {
     if ((entry.levels || 0) < choice.level && entry.choices) delete entry.choices[choice.key];
   });
   const expWant = R.expertiseOwed(entry);
@@ -582,6 +582,9 @@ function classDetail(entry, index) {
   });
 
   if ((entry.levels || 0) >= cls.subclassLevel) wrap.appendChild(subclassFieldset(entry, cls));
+  subclassChoices(entry).forEach((choice) => {
+    if ((entry.levels || 0) >= choice.level) wrap.appendChild(choiceFieldset(entry, cls, choice));
+  });
 
   wrap.appendChild(featureSummary(entry, cls));
   return wrap;
@@ -696,7 +699,8 @@ function choiceFieldset(entry, cls, choice) {
 
   const current = (entry.choices || {})[choice.key];
   return h("fieldset", {},
-    h("legend", { text: `${choice.label} — level ${choice.level}` }),
+    h("legend", { text: `${choice.fromSubclass ? choice.fromSubclass + ": " : ""}${choice.label} — level ${choice.level}` }),
+    choice.note ? h("div", { class: "hint", text: choice.note }) : null,
     options.map((o) => h("label", { class: "optrow" },
       h("input", {
         type: "radio", name: `choice-${entry.key}-${choice.key}`, checked: current === o.key,
@@ -711,6 +715,11 @@ function choiceFieldset(entry, cls, choice) {
   );
 }
 
+/* The chosen subclass's own choices (shape matches cls.choices). */
+function subclassChoices(entry) {
+  return R.choicesFor(entry).filter((c) => c.fromSubclass);
+}
+
 function subclassFieldset(entry, cls) {
   const options = R.subclassChoicesFor(entry);
   return h("fieldset", {},
@@ -719,7 +728,14 @@ function subclassFieldset(entry, cls) {
       options.map((sub) => h("button", {
         class: `ccard${entry.subclass === sub.key ? " selected" : ""}`,
         type: "button",
-        onclick: () => { entry.subclass = sub.key; rerender(); }
+        onclick: () => {
+          /* The old subclass's own choices don't carry over to a new one. */
+          if (entry.subclass !== sub.key && entry.choices) {
+            subclassChoices(entry).forEach((c) => { delete entry.choices[c.key]; });
+          }
+          entry.subclass = sub.key;
+          rerender();
+        }
       },
         h("span", { class: "cname", text: sub.name }),
         h("span", { class: "cmeta", text: sub.blurb }),
@@ -1444,7 +1460,7 @@ function buildSpellsStep(panel) {
     "Only spells on each class's own list are shown here. Hover or focus a spell to read it before choosing." }));
 
   const work = R.spellWork(state);
-  const anyGrants = R.featSpellGrants(state).length > 0;
+  const anyGrants = R.featSpellGrants(state).length > 0 || R.subclassSpellGrants(state).length > 0;
   if (!work.length && !anyGrants) {
     panel.appendChild(h("div", { class: "empty-note", text:
       "Nothing casts yet — take levels in a spellcasting class (or an Eldritch Knight / Arcane Trickster subclass) to see spells here." }));
@@ -1453,6 +1469,8 @@ function buildSpellsStep(panel) {
 
   work.forEach((w) => panel.appendChild(casterSpellBlock(w)));
   const leftover = leftoverGrantsBox();
+  const subLeftover = leftoverSubclassGrantsBox();
+  if (subLeftover) panel.appendChild(subLeftover);
   if (leftover) panel.appendChild(leftover);
 
   const issues = issueList("spells");
@@ -1481,6 +1499,7 @@ function casterSpellBlock(w) {
         "Known spells are always prepared for this class — there's no separate daily-preparation step." }));
     }
   }
+  remainingSubclassGrantBlocks(w.classIndex).forEach((n) => wrap.appendChild(n));
   /* Feat grants anchored to this class that no walkthrough row claimed
      (always the case for prepare-from-the-whole-list classes). */
   R.featSpellGrants(state)
@@ -1568,6 +1587,61 @@ function featSpellGrantBlock(g) {
     wrap.appendChild(h("div", { class: "hint", text: `${p.chosen.length} of ${p.count} chosen.` }));
   });
   return wrap;
+}
+
+/* ---------------- Spells granted by subclass features ----------------
+   Same placement idea as feat spells: inside the walkthrough row for the
+   class level that grants them, else at the end of that class's block, else
+   (non-casters: Monk, Barbarian, Psi Warrior) in their own box. Tracked in
+   `renderedGrants` under "sub:<classIndex>:<level>". */
+function subclassGrantsAt(classIndex, level) {
+  const id = `sub:${classIndex}:${level}`;
+  if (renderedGrants.has(id)) return [];
+  return R.subclassSpellGrants(state).filter((g) => g.classIndex === classIndex && g.level === level);
+}
+
+function subclassGrantBlock(grants) {
+  if (!grants.length) return null;
+  const g0 = grants[0];
+  renderedGrants.add(`sub:${g0.classIndex}:${g0.level}`);
+  const notes = grants.filter((g) => g.note);
+  return h("div", { class: "feat-grant", style: "margin:6px 0 10px" },
+    h("div", { class: "spell-level-head" },
+      h("span", { text: `Always prepared — ${g0.subclassName}` }),
+      h("span", { class: "count", text: g0.ability ? `${ABIL_ABBR[g0.ability]} casting` : "doesn't count against your limit" })),
+    h("div", { class: "chip-select", style: "margin-top:4px" },
+      grants.map((g) => h("span", { class: "chip on", ...tooltipTrigger(() => spellPopoverHtml(SPELLS[g.key])) },
+        SPELLS[g.key].name))),
+    notes.length ? h("div", { class: "hint", text: notes.map((g) => `${SPELLS[g.key].name}: ${g.note}`).join(" · ") }) : null
+  );
+}
+
+/* Every subclass grant level for a class index not drawn yet, each with a
+   "Level N" heading. */
+function remainingSubclassGrantBlocks(classIndex, filter) {
+  const byLevel = new Map();
+  R.subclassSpellGrants(state)
+    .filter((g) => g.classIndex === classIndex && !renderedGrants.has(`sub:${classIndex}:${g.level}`) && (!filter || filter(g)))
+    .forEach((g) => { if (!byLevel.has(g.level)) byLevel.set(g.level, []); byLevel.get(g.level).push(g); });
+  return [...byLevel.keys()].sort((a, b) => a - b).flatMap((lvl) => [
+    h("div", { class: "spell-level-head", style: "margin-top:12px" }, h("span", { text: `Level ${lvl}` })),
+    subclassGrantBlock(byLevel.get(lvl))
+  ]);
+}
+
+/* Subclass spells for classes with no spell block of their own. */
+function leftoverSubclassGrantsBox(filter) {
+  const indexes = [...new Set(R.subclassSpellGrants(state)
+    .filter((g) => !renderedGrants.has(`sub:${g.classIndex}:${g.level}`) && (!filter || filter(g)))
+    .map((g) => g.classIndex))];
+  if (!indexes.length) return null;
+  const box = h("fieldset", {}, h("legend", { text: "Spells from subclass features" }));
+  indexes.forEach((i) => {
+    const entry = R.classEntries(state)[i];
+    box.appendChild(h("h4", { text: `${CLASSES[entry.key].name} ${entry.levels}` }));
+    remainingSubclassGrantBlocks(i, filter).forEach((n) => box.appendChild(n));
+  });
+  return box;
 }
 
 /* Grants nothing else claimed, in their own box, labelled by level. */
@@ -1667,7 +1741,8 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     runningTotal = row.target;
     const grants = grantsAt(w.classIndex, row.level);
     const arcana = (w.arcanum || []).filter((a) => a.classLevel === row.level);
-    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length && !arcana.length)) return;
+    const subGrants = subclassGrantsAt(w.classIndex, row.level);
+    if (onlyLevel != null ? row.level !== onlyLevel : (row.newCount === 0 && row.level !== 1 && !grants.length && !arcana.length && !subGrants.length)) return;
 
     const section = h("div", { class: "spell-groups", style: "margin-bottom:10px" });
     section.appendChild(h("div", { class: "spell-level-head" },
@@ -1701,6 +1776,7 @@ function permanentGrowthWalkthrough(w, onlyLevel) {
     if (w.swapOnLevel && row.level > 1 && list.length >= row.target) {
       section.appendChild(swapControl(w, list, startIndex));
     }
+    if (subGrants.length) section.appendChild(subclassGrantBlock(subGrants));
     arcana.forEach((a) => section.appendChild(arcanumPicker(w, a)));
     grants.forEach((g) => section.appendChild(featSpellGrantBlock(g)));
 
@@ -2001,7 +2077,9 @@ function spellBox() {
   const slots = R.spellSlots(state);
   const pact = R.pactMagic(state);
   const grants = R.featSpellGrants(state);
-  if (!allowances.length && !grants.length) return null;
+  const casterIdx = new Set(R.spellWork(state).map((w) => w.classIndex));
+  const otherSub = R.subclassSpellGrants(state).filter((g) => !casterIdx.has(g.classIndex));
+  if (!allowances.length && !grants.length && !otherSub.length) return null;
 
   return h("div", { class: "ps-box" },
     h("h4", { text: "Spellcasting" }),
@@ -2019,7 +2097,8 @@ function spellBox() {
     R.isMulticlass(state) && slots.length ? h("div", { class: "ps-note", text:
       `Slots from a combined caster level of ${R.casterLevel(state)}.` + (pact ? " Pact Magic is tracked separately." : "") }) : null,
     ...R.spellWork(state).map((w) => spellNameList(w)),
-    ...grants.map((g) => featSpellNameList(g))
+    ...grants.map((g) => featSpellNameList(g)),
+    otherSub.length ? subclassSpellNameList(otherSub) : null
   );
 }
 
@@ -2048,7 +2127,8 @@ function spellNameList(w) {
     ...(w.prepMode === "free" || w.prepMode === "spellbook" ? (w.pick.prepared || []) : (w.pick.known || []))
   ].filter(Boolean);
   const arcana = (w.arcanum || []).filter((a) => a.chosen);
-  if (!readyKeys.length && !arcana.length) return null;
+  const subKeys = R.subclassSpellGrants(state).filter((g) => g.classIndex === w.classIndex).map((g) => g.key);
+  if (!readyKeys.length && !arcana.length && !subKeys.length) return null;
 
   const byLevel = new Map();
   readyKeys.forEach((key) => {
@@ -2075,7 +2155,28 @@ function spellNameList(w) {
       h("div", { class: "pss-head", text: `${w.className} — Mystic Arcanum (1/Long Rest each, no slot)` }),
       arcana.flatMap((a, i) => [i > 0 ? ", " : null, spellNameEl(a.chosen), ` (${a.spellLevel})`])
     ) : null
+,
+    subKeys.length ? h("div", { class: "pss-group" },
+      h("div", { class: "pss-head", text: `${w.className} — always prepared (subclass)` }),
+      [...new Set(subKeys)].flatMap((k, i) => [i > 0 ? ", " : null, spellNameEl(k)])
+    ) : null
   );
+}
+
+/* Subclass spells for classes that don't otherwise cast (Monk, Barbarian,
+   Psi Warrior): grouped per class, with the casting ability and DC. */
+function subclassSpellNameList(grants) {
+  const byClass = new Map();
+  grants.forEach((g) => { if (!byClass.has(g.classIndex)) byClass.set(g.classIndex, []); byClass.get(g.classIndex).push(g); });
+  return h("div", { class: "ps-spelllist", style: "margin-top:8px" },
+    [...byClass.values()].map((list) => {
+      const g0 = list[0];
+      const ab = g0.ability;
+      const dc = ab ? ` · DC ${R.spellSaveDC(state, ab)}, atk ${R.fmtMod(R.spellAttackBonus(state, ab))} (${ABIL_ABBR[ab]})` : "";
+      return h("div", { class: "pss-group" },
+        h("div", { class: "pss-head", text: `${g0.subclassName}${dc}` }),
+        list.flatMap((g, i) => [i > 0 ? ", " : null, spellNameEl(g.key), g.note ? ` (${g.note})` : null]));
+    }));
 }
 
 function trackBox() {
@@ -2333,6 +2434,8 @@ function buildLevelUpChoose(panel) {
   if (lvl === cls.subclassLevel || (!entry.subclass && lvl >= cls.subclassLevel)) {
     panel.appendChild(subclassFieldset(entry, cls));
   }
+  subclassChoices(entry).filter((c) => pendingKeys.has(c.key) || c.level === lvl || (lvl === cls.subclassLevel && c.level <= lvl))
+    .forEach((choice) => panel.appendChild(choiceFieldset(entry, cls, choice)));
 
   /* The feat slot this level grants, plus anything still owed from before. */
   const pendingIds = new Set(R.pendingFeatSlots(state).map((s) => s.id));
@@ -2347,6 +2450,8 @@ function buildLevelUpChoose(panel) {
   const featSpells = leftoverGrantsBox((g) =>
     (g.anchorIndex === index && g.anchorLevel === lvl) || R.featSpellIssues(g).length > 0);
   if (featSpells) panel.appendChild(featSpells);
+  const subSpells = leftoverSubclassGrantsBox((g) => g.classIndex === index && g.level === lvl);
+  if (subSpells) panel.appendChild(subSpells);
 
   const issues = levelUpIssues();
   if (issues.length) {
@@ -2428,7 +2533,7 @@ function levelUpSpellBlocks(before, index, lvl) {
     const list = (w.permanentList || []).filter(Boolean);
     const row = w.growth.find((r) => r.level === lvl);
     if (list.length < prevTarget) { wrap.appendChild(permanentGrowthWalkthrough(w)); shown = true; }
-    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length || w.arcanum.some((a) => a.classLevel === lvl))) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
+    else if (row && (row.newCount > 0 || w.swapOnLevel || grantsAt(index, lvl).length || subclassGrantsAt(index, lvl).length || w.arcanum.some((a) => a.classLevel === lvl))) { wrap.appendChild(permanentGrowthWalkthrough(w, lvl)); shown = true; }
   }
 
   /* An arcanum owed from an earlier level that was never picked. */

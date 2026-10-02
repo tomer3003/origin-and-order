@@ -771,6 +771,7 @@ export function allKnownSpellKeys(state) {
     g.fixed.forEach((k) => set.add(k));
     g.picks.forEach((p) => p.chosen.forEach((k) => set.add(k)));
   });
+  subclassSpellGrants(state).forEach((g) => set.add(g.key));
   return set;
 }
 
@@ -792,16 +793,61 @@ export function subclassChoicesFor(entry) {
 /* ---------------- Level-gated class choices ---------------- */
 
 /* Choices a class owes at its current level (Divine Order, Fighting Style,
-   Blessed Strikes, and so on) that the player hasn't answered yet. */
+   Blessed Strikes, and so on) that the player hasn't answered yet. The
+   chosen subclass's own `choices` (Circle of the Land's land type, ...) use
+   the same shape and the same entry.choices store, so they're included. */
+export function choicesFor(entry) {
+  const cls = CLASSES[entry.key];
+  const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+  return [...(cls.choices || []), ...((sub && sub.choices) || []).map((c) => ({ ...c, fromSubclass: sub.name }))];
+}
+
 export function pendingClassChoices(state) {
   const out = [];
   classEntries(state).forEach((entry, index) => {
     const cls = CLASSES[entry.key];
-    (cls.choices || []).forEach((choice) => {
+    choicesFor(entry).forEach((choice) => {
       if ((entry.levels || 0) < choice.level) return;
       const answered = entry.choices && entry.choices[choice.key];
       if (!answered) out.push({ index, entry, cls, choice });
     });
+  });
+  return out;
+}
+
+/* ---------------- Spells granted by subclass features ----------------
+
+   Always-prepared spells a subclass hands out, each tied to the class level
+   that grants it: the "<Subclass> Spells" tables (`spellsByLevel`, by spell
+   name), spells named inside other features (`grantedSpells`, by key, with an
+   optional note and casting ability for non-casters), and Circle of the
+   Land's table for the land currently chosen. None of these count against
+   a class's prepared/known numbers. */
+let spellKeyByName = null;
+function spellKeyFor(name) {
+  if (!spellKeyByName) {
+    spellKeyByName = new Map(Object.entries(SPELLS).map(([k, s]) => [s.name.toLowerCase().replace(/[’']/g, "'"), k]));
+  }
+  return spellKeyByName.get(String(name).toLowerCase().replace(/[’']/g, "'")) || null;
+}
+
+export function subclassSpellGrants(state) {
+  const out = [];
+  classEntries(state).forEach((entry, classIndex) => {
+    const cls = CLASSES[entry.key];
+    const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+    if (!sub) return;
+    const levels = entry.levels || 0;
+    const add = (level, key, extra) => {
+      if (level > levels || !key || !SPELLS[key]) return;
+      out.push({ classIndex, classKey: entry.key, subclassName: sub.name, level: Number(level), key, ...extra });
+    };
+    Object.entries(sub.spellsByLevel || {}).forEach(([lvl, names]) => names.forEach((n) => add(lvl, spellKeyFor(n), {})));
+    Object.entries(sub.grantedSpells || {}).forEach(([lvl, list]) => list.forEach((g) => add(lvl, g.spell, { note: g.note, ability: g.ability })));
+    const land = entry.choices && entry.choices.land;
+    if (sub.landSpells && land && sub.landSpells[land]) {
+      Object.entries(sub.landSpells[land]).forEach(([lvl, keys]) => keys.forEach((k) => add(lvl, k, { note: `${land} land` })));
+    }
   });
   return out;
 }

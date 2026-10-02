@@ -101,6 +101,9 @@ export const monk = {
     shadow: {
       name: "Warrior of Shadow",
       blurb: "Shadowfell power turned to stealth and subterfuge",
+      grantedSpells: {
+        3: [{ spell: "minorIllusion", ability: "wis", note: "known cantrip" }, { spell: "darkness", ability: "wis", note: "cast for 1 Focus Point, no components" }]
+      },
       features: {
         3: [{ name: "Shadow Arts", text: "Spend 1 Focus Point to cast Darkness with no components, seeing inside it and moving its area 60 ft. at the start of each of your turns. You also gain 60 ft. of Darkvision (or +60 ft. if you had it) and know Minor Illusion, cast using Wisdom." }],
         6: [{ name: "Shadow Step", text: "While entirely in Dim Light or Darkness, Bonus Action: teleport 60 ft. to another such space and gain Advantage on your next melee attack this turn." }],
@@ -111,6 +114,7 @@ export const monk = {
     elements: {
       name: "Warrior of the Elements",
       blurb: "Elemental Chaos briefly tamed and worn",
+      grantedSpells: { 3: [{ spell: "elementalism", ability: "wis", note: "known cantrip" }] },
       features: {
         3: [
           { name: "Elemental Attunement", text: "At the start of your turn, spend 1 Focus Point for 10 minutes of elemental energy: Unarmed Strike reach grows 10 ft., and those strikes can deal Acid, Cold, Fire, Lightning, or Thunder damage and force a Str save to move the target 10 ft. toward or away from you." },

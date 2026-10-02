@@ -91,6 +91,10 @@ export const barbarian = {
     wildHeart: {
       name: "Path of the Wild Heart",
       blurb: "Kinship with the animal world",
+      grantedSpells: {
+        3: [{ spell: "beastSense", ability: "wis", note: "Ritual only" }, { spell: "speakWithAnimals", ability: "wis", note: "Ritual only" }],
+        10: [{ spell: "communeWithNature", ability: "wis", note: "Ritual only" }]
+      },
       features: {
         3: [
           { name: "Animal Speaker", text: "Cast Beast Sense and Speak with Animals as Rituals only, using Wisdom." },

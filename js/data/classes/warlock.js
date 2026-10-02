@@ -159,6 +159,7 @@ export const warlock = {
     greatOldOne: {
       name: "Great Old One Patron",
       blurb: "Forbidden lore from an indifferent elder being",
+      grantedSpells: { 10: [{ spell: "hex" }] },
       spellsByLevel: {
         3: ["Detect Thoughts", "Dissonant Whispers", "Phantasmal Force", "Tasha's Hideous Laughter"],
         5: ["Clairvoyance", "Hunger of Hadar"],

@@ -86,6 +86,11 @@ export const bard = {
     glamour: {
       name: "College of Glamour",
       blurb: "Beguiling fey magic and otherworldly majesty",
+      /* Spells granted by features, always prepared (by subclass level). */
+      grantedSpells: {
+        3: [{ spell: "charmPerson" }, { spell: "mirrorImage" }],
+        6: [{ spell: "command" }]
+      },
       features: {
         3: [
           { name: "Beguiling Magic", text: "Charm Person and Mirror Image are always prepared. Right after you cast an Enchantment or Illusion spell with a slot, a creature you can see within 60 ft. makes a Wis save against your spell DC or is Charmed or Frightened (your choice) for 1 minute, repeating the save at the end of each of its turns. Once per Long Rest, or spend a Bardic Inspiration use to recharge it." },

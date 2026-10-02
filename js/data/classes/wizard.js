@@ -70,6 +70,7 @@ export const wizard = {
     abjurer: {
       name: "Abjurer",
       blurb: "Protective magic and a ward woven from your own spells",
+      grantedSpells: { 10: [{ spell: "counterspell" }, { spell: "dispelMagic" }] },
       features: {
         3: [
           { name: "Abjuration Savant", text: "Add two Abjuration spells of level 2 or lower to your spellbook free, plus one more Abjuration spell free whenever you unlock a new spell-slot level." },
@@ -109,6 +110,10 @@ export const wizard = {
     illusionist: {
       name: "Illusionist",
       blurb: "Deceptions so convincing they edge into reality",
+      grantedSpells: {
+        3: [{ spell: "minorIllusion", note: "extra cantrip (or another Wizard cantrip if you know it); doesn't count against your cantrips" }],
+        6: [{ spell: "summonBeast", note: "Illusion version free once per Long Rest (half HP)" }, { spell: "summonFey", note: "Illusion version free once per Long Rest (half HP)" }]
+      },
       features: {
         3: [
           { name: "Illusion Savant", text: "Add two Illusion spells of level 2 or lower to your spellbook free, plus one more Illusion spell free whenever you unlock a new spell-slot level." },
