@@ -108,6 +108,7 @@ export const paladin = {
     glory: {
       name: "Oath of Glory",
       blurb: "Heroism, athletic excellence, and destined deeds",
+      resources: [{ label: "Glorious Defense", fromLevel: 15, ability: "cha" }],
       spellsByLevel: {
         3: ["Guiding Bolt", "Heroism"],
         5: ["Enhance Ability", "Magic Weapon"],

@@ -128,6 +128,8 @@ export const barbarian = {
     zealot: {
       name: "Path of the Zealot",
       blurb: "Rage as ecstatic union with a god",
+      /* Shown on the sheet: dice by level, "1 + level" pools, ability-mod uses. */
+      resources: [{ label: "Warrior of the Gods (d12 pool)", byLevel: { 3: "4d12", 6: "5d12", 12: "6d12", 17: "7d12" } }],
       features: {
         3: [
           { name: "Divine Fury", text: "While Raging, the first creature you hit each turn takes an extra 1d6 + half your Barbarian level damage, Necrotic or Radiant (your choice each time)." },

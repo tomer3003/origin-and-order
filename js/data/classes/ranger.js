@@ -117,6 +117,7 @@ export const ranger = {
     feyWanderer: {
       name: "Fey Wanderer",
       blurb: "Feywild mirth, glamour, and mind-scarring fury",
+      resources: [{ label: "Misty Wanderer", fromLevel: 15, ability: "wis" }],
       skillGrants: [{ level: 3, count: 1, from: ["deception", "performance", "persuasion"] }],
       spellsByLevel: {
         3: ["Charm Person"],
@@ -138,6 +139,7 @@ export const ranger = {
     gloomStalker: {
       name: "Gloom Stalker",
       blurb: "Shadowfell magic and devastating ambushes",
+      resources: [{ label: "Dread Ambusher", fromLevel: 3, ability: "wis" }],
       spellsByLevel: {
         3: ["Disguise Self"],
         5: ["Rope Trick"],

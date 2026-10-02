@@ -163,7 +163,7 @@ The live site was confirmed serving the modular app with a clean console,
 and the layout has no horizontal overflow at 375 px.
 
 ### In progress
-- Nothing. Next candidates: subclass depth, then equipment (see Phase D and the errata log).
+- Nothing. Next candidates: equipment tables, species size choice (see Phase D and the errata log).
 
 ### Done — Phase A: breadth first (all seven items)
 
@@ -753,11 +753,73 @@ you may replace one arcanum spell with another of the same level.
   14 → 15 showed only the L8 arcanum plus that level's new spell, saved all
   three; sheet listed them. No console errors.
 
+### Done — full subclass features (Phase D, part 3)
+
+**Audit first.** `tools/parse-subclasses.pl phb-raw.txt` extracts all 48
+PHB subclasses and their 241 "Level N: Feature" headings with text (pass
+over a fixed list of the 48 names — five subclasses have no all-caps art
+marker; a subclass starts at its plain title line, which precedes its spell
+table; "<X> Spells" goes to the subclass named X; duplicate headings are
+dropped; Chapter 4 ends the last one). Against our data: every feature
+present at the right level, none extra. `tools/subclass-compare.pl` prints
+ours vs the book side by side; `tools/subclass-number-check.pl` flags
+numbers in our summaries missing from the book text and checks spell
+tables — only false positives remain ("min 1" = "minimum of once", etc.).
+Conclusion: the 241 summaries were already accurate 2024 paraphrases, and
+all 19 subclass spell tables match. The gap was mechanics the app ignored:
+
+1. **Always-prepared subclass spells** — `R.subclassSpellGrants(state)`
+   resolves `spellsByLevel` (names), new `grantedSpells` (keys, with note /
+   casting ability for non-casters: Glamour, Stars, Psi Warrior, GOO's Hex,
+   Abjurer, Illusionist, Shadow/Elements Monks, Wild Heart rituals), and
+   Circle of the Land's `landSpells` for the chosen land. Shown as
+   "Always prepared — <Subclass>" in the walkthrough row of the level that
+   grants them (end of block for prepare-from-list classes; a "Spells from
+   subclass features" box for non-casters), counted in allKnownSpellKeys,
+   listed on the sheet (non-casters with their own DC/attack).
+2. **Subclass choices** — subclasses may declare `choices` (same shape as
+   class choices, stored in entry.choices; `R.choicesFor(entry)` merges
+   them). Used for Land type, Champion's Additional Fighting Style
+   (optionsFrom "fighter"), Draconic Elemental Affinity, Beast Master
+   companion, Aspect of the Wilds, Hunter's Prey, Defensive Tactics.
+   Changing subclass clears its choices, subSkills, maneuvers and spell picks.
+3. **Subclass skills** — `skillGrants` (Lore 3 any, Fey Wanderer 1 of 3,
+   Battle Master Student of War 1 Fighter skill, Mercy fixed Insight +
+   Medicine) → entry.subSkills, included in proficientSkills, gated in
+   classStepIssues.
+4. **Battle Master maneuvers** — picker off the existing `maneuverGrants`
+   (3/+2/+2/+2) → entry.maneuvers.
+5. **Subclass spell picks** — `spellChoices` (Lore's Magical Discoveries:
+   2 from Cleric/Druid/Wizard, cantrip or a level with slots, always
+   prepared) and `savantSchool` (each Wizard school: 2 of level ≤2 at 3,
+   then 1 per new slot level, free into the spellbook — included in the
+   prepared-from-book pool via `R.spellbookContents(w)`). Stored in
+   spellPicks[i].sub[id]; shown in the granting level's row.
+6. **Subclass resources on the sheet** — `tracksFor` now adds Superiority
+   Dice and Psionic Energy Dice (existing tables, verified vs PHB) and a new
+   declarative `resources` list: dice by level (Warrior of the Gods, Portent),
+   `levelPlus` pools (Healing Light 1+level d6), `levelTimes`+ability (Arcane
+   Ward 2×level+Int), and ability-mod uses per rest for 14 features
+   (`shortRestFrom` for Improved Warding Flare).
+7. The sheet's features list now shows every answered choice (class and
+   subclass — chosen Fighting Styles were never shown before), subclass
+   skills and maneuvers, at the level they were taken.
+
+Verified live: Life Cleric 5 / Shadow Monk 3, Clockwork Sorcerer 5 (spells
+in the L3/L5 rows), Land Druid choice + clearing on subclass switch,
+Abjurer 5 Savant picks feeding the prepared pool, Battle Master 7 picks and
+sheet rows, Champion Fighting Style rows. Regression sweep: 1,104
+class × subclass × level combinations through every rules function, zero
+exceptions; no console errors.
+
+Not modeled (text only): Wild Shape / Circle Forms beast stats, Beast
+Master companion and summon stat blocks (see the errata log — use MM 2025),
+tool proficiencies (Student of War's Artisan's Tools, Assassin's Tools).
+
 ### Then — Phase D: depth
-Full subclass features at every level, full equipment tables, more
-species-adjacent polish (the Medium-or-Small size choice noted earlier).
-Class by class. Check the errata log above before starting equipment or
-anything with creature stat blocks.
+Full equipment tables (apply the Shield errata), more species-adjacent
+polish (the Medium-or-Small size choice noted earlier). Check the errata log
+above before starting equipment or anything with creature stat blocks.
 
 ---
 

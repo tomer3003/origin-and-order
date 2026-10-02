@@ -87,6 +87,7 @@ export const monk = {
     mercy: {
       name: "Warrior of Mercy",
       blurb: "Hands that heal and hands that harm",
+      resources: [{ label: "Flurry of Healing and Harm", fromLevel: 11, ability: "wis" }],
       skillGrants: [{ level: 3, fixed: ["insight", "medicine"], label: "Implements of Mercy" }],
       features: {
         3: [
@@ -129,6 +130,7 @@ export const monk = {
     openHand: {
       name: "Warrior of the Open Hand",
       blurb: "Pure unarmed technique, pushing and toppling foes",
+      resources: [{ label: "Wholeness of Body", fromLevel: 6, ability: "wis" }],
       features: {
         3: [{ name: "Open Hand Technique", text: "Each Flurry of Blows hit can Addle (no Opportunity Attacks until its next turn), Push (Str save or shoved 15 ft.), or Topple (Dex save or Prone)." }],
         6: [{ name: "Wholeness of Body", text: "Bonus Action: regain one Martial Arts die + your Wisdom modifier HP (min 1). Uses = Wisdom modifier (min 1) per Long Rest." }],

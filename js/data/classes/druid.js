@@ -118,6 +118,7 @@ export const druid = {
     moon: {
       name: "Circle of the Moon",
       blurb: "Lunar magic poured into savage beast forms",
+      resources: [{ label: "Moonlight Step", fromLevel: 10, ability: "wis" }],
       spellsByLevel: {
         3: ["Cure Wounds", "Moonbeam", "Starry Wisp"],
         5: ["Conjure Animals"],
@@ -156,6 +157,7 @@ export const druid = {
     stars: {
       name: "Circle of the Stars",
       blurb: "Secrets read from the constellations",
+      resources: [{ label: "Star Map free Guiding Bolts", fromLevel: 3, ability: "wis" }, { label: "Cosmic Omen", fromLevel: 6, ability: "wis" }],
       grantedSpells: {
         3: [{ spell: "guidance", note: "while holding your Star Map" }, { spell: "guidingBolt", note: "while holding your Star Map; also castable free (Wis mod times per Long Rest)" }]
       },

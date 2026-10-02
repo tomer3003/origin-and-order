@@ -103,6 +103,7 @@ export const sorcerer = {
     clockwork: {
       name: "Clockwork Sorcery",
       blurb: "The cosmic order of Mechanus running through you",
+      resources: [{ label: "Restore Balance", fromLevel: 3, ability: "cha" }],
       spellsByLevel: {
         3: ["Aid", "Alarm", "Lesser Restoration", "Protection from Evil and Good"],
         5: ["Dispel Magic", "Protection from Energy"],

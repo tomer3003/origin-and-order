@@ -104,6 +104,7 @@ export const cleric = {
     light: {
       name: "Light Domain",
       blurb: "Radiance, fire, and revelation that burns away lies",
+      resources: [{ label: "Warding Flare", fromLevel: 3, ability: "wis", shortRestFrom: 6 }, { label: "Corona of Light", fromLevel: 17, ability: "wis" }],
       spellsByLevel: {
         3: ["Burning Hands", "Faerie Fire", "Scorching Ray", "See Invisibility"],
         5: ["Daylight", "Fireball"],
@@ -140,6 +141,7 @@ export const cleric = {
     war: {
       name: "War Domain",
       blurb: "Battle prowess offered up as prayer",
+      resources: [{ label: "War Priest attacks", fromLevel: 3, ability: "wis", rest: "Short" }],
       spellsByLevel: {
         3: ["Guiding Bolt", "Magic Weapon", "Shield of Faith", "Spiritual Weapon"],
         5: ["Crusader's Mantle", "Spirit Guardians"],

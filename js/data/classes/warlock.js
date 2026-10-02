@@ -102,6 +102,7 @@ export const warlock = {
     archfey: {
       name: "Archfey Patron",
       blurb: "Fey trickery, teleportation, and glamour",
+      resources: [{ label: "Steps of the Fey", fromLevel: 3, ability: "cha" }],
       spellsByLevel: {
         3: ["Calm Emotions", "Faerie Fire", "Misty Step", "Phantasmal Force", "Sleep"],
         5: ["Blink", "Plant Growth"],
@@ -121,6 +122,7 @@ export const warlock = {
     celestial: {
       name: "Celestial Patron",
       blurb: "Radiant healing light drawn from the Upper Planes",
+      resources: [{ label: "Healing Light (d6 pool)", fromLevel: 3, levelPlus: 1, die: "d6" }],
       spellsByLevel: {
         3: ["Aid", "Cure Wounds", "Guiding Bolt", "Lesser Restoration", "Light", "Sacred Flame"],
         5: ["Daylight", "Revivify"],
@@ -140,6 +142,7 @@ export const warlock = {
     fiend: {
       name: "Fiend Patron",
       blurb: "A bargain struck with the Lower Planes",
+      resources: [{ label: "Dark One's Own Luck", fromLevel: 6, ability: "cha" }],
       spellsByLevel: {
         3: ["Burning Hands", "Command", "Scorching Ray", "Suggestion"],
         5: ["Fireball", "Stinking Cloud"],

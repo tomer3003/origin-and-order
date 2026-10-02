@@ -1187,9 +1187,11 @@ export function describeFeatChoice(f, pick) {
 /* Per-level counters (Rages, Focus Points, Superiority Dice, …). */
 export function tracksFor(state) {
   const out = [];
+  const mods = abilityMods(state);
   classEntries(state).forEach((entry) => {
     const cls = CLASSES[entry.key];
-    const i = (entry.levels || 0) - 1;
+    const levels = entry.levels || 0;
+    const i = levels - 1;
     if (i < 0) return;
     (cls.tracks || []).forEach((t) => {
       const value = t.byLevel[i];
@@ -1199,6 +1201,32 @@ export function tracksFor(state) {
         value: `${t.prefix || ""}${value}${t.suffix || ""}`,
         classKey: entry.key
       });
+    });
+
+    /* Subclass resources. */
+    const sub = entry.subclass && cls.subclasses ? cls.subclasses[entry.subclass] : null;
+    if (!sub) return;
+    const atLevel = (table) => {
+      const lv = Object.keys(table).map(Number).filter((l) => l <= levels).sort((a, b) => b - a)[0];
+      return lv == null ? null : table[lv];
+    };
+    const dice = (label, table) => {
+      const d = table && atLevel(table);
+      if (d) out.push({ label, value: `${d.count}${d.die}`, classKey: entry.key, subclass: sub.name });
+    };
+    dice("Superiority Dice", sub.superiorityDice);
+    dice("Psionic Energy Dice", sub.psionicDice);
+    (sub.resources || []).forEach((r) => {
+      if (r.fromLevel && levels < r.fromLevel) return;
+      let value = null;
+      if (r.byLevel) value = atLevel(r.byLevel);
+      else if (r.levelPlus != null) value = `${levels + r.levelPlus}${r.die || ""}`;
+      else if (r.levelTimes != null) value = String(levels * r.levelTimes + (r.ability ? mods[r.ability] : 0));
+      else if (r.ability) {
+        const short = r.rest === "Short" || (r.shortRestFrom && levels >= r.shortRestFrom);
+        value = `${Math.max(1, mods[r.ability])}/${short ? "Short or Long" : "Long"} Rest`;
+      }
+      if (value != null) out.push({ label: r.label, value, classKey: entry.key, subclass: sub.name });
     });
   });
   return out;

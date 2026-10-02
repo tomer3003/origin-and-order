@@ -70,6 +70,7 @@ export const wizard = {
     abjurer: {
       name: "Abjurer",
       blurb: "Protective magic and a ward woven from your own spells",
+      resources: [{ label: "Arcane Ward HP", fromLevel: 3, levelTimes: 2, ability: "int" }],
       savantSchool: "Abjuration",
       grantedSpells: { 10: [{ spell: "counterspell" }, { spell: "dispelMagic" }] },
       features: {
@@ -85,6 +86,7 @@ export const wizard = {
     diviner: {
       name: "Diviner",
       blurb: "Glimpses of past, present, and future",
+      resources: [{ label: "Portent dice", byLevel: { 3: "2 d20s", 14: "3 d20s" } }],
       savantSchool: "Divination",
       features: {
         3: [
