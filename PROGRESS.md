@@ -886,4 +886,10 @@ cleanly in top-to-bottom order.
 - **Level-up:** shows the mastery picker when the count rises (Fighter 4/10/16, Barbarian 4/10), when Weapon Master is taken that level, or when picks are owed. `levelUpIssues` now includes the equipment step.
 - **Sheet:** a new Attacks box (attack bonus, damage including versatile, notes, mastery with a tooltip, AC source). The Equipment box now lists the inventory with worn markers, coins and weight, falling back to kit text before the inventory is filled.
 - **Verified live:** Fighter 3 kit to inventory, mastery picks, Rope added through the browser, tooltips, the sheet's attacks (Greatsword +5 2d6 + 3, Shortbow +6 with Archery) and inventory, and a level-up from 3 to 4 asking for the 4th mastery plus Weapon Master's own pick. Regression sweep: 2,300 builds (every class, subclass, level and class kit option, with a background) through the equipment and other rules, zero exceptions. No console errors.
-- **Not modeled:** the Dueling and Thrown Weapon fighting styles' damage bonuses (they're situational), the Monk Martial Arts die and Dexterity on unarmed strikes, and automatic coin deduction when buying.
+- **Fighting styles and Martial Arts on attack lines** (`R.attacks`):
+  - **Dueling:** +2 on one-handed melee weapons, noted as conditional. A Versatile weapon used two-handed doesn't get it, and neither does a thrown attack.
+  - **Thrown Weapon Fighting:** +2 on ranged attacks with a Thrown weapon, given as a separate "thrown" damage figure for melee weapons.
+  - **Unarmed Fighting:** 1d8 + Str, with a note that it drops to 1d6 when holding a weapon or Shield.
+  - **Monk Martial Arts:** only with no armor and no Shield. Unarmed Strikes and Monk weapons (Simple melee, or Martial melee with Light) use the Martial Arts die when it's bigger, plus Dex if it's higher. Empowered Strikes are noted from level 6.
+  - Fighting-style summaries were corrected against the PHB: "Dueling" spelling, Thrown Weapon Fighting (the 2014 "draw as part of the attack" clause removed), Unarmed Fighting's d8 condition, and Great Weapon Fighting's Two-Handed/Versatile requirement.
+- **Not modeled:** automatic coin deduction when buying.

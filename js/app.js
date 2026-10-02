@@ -2543,6 +2543,7 @@ function attacksBox() {
           a.range && !/Range/.test(a.propertiesText || "") ? `Range ${a.range}` : null,
           a.propertiesText || null,
           a.mastery ? `Mastery: ${a.mastery}` : null,
+          ...(a.notes || []),
           a.proficient ? null : "not proficient"
         ].filter(Boolean).join("; ");
         return h("tr", {},
@@ -2550,7 +2551,7 @@ function attacksBox() {
             ? h("span", { class: "pop-trigger", tabindex: "0", text: a.name, ...tooltipTrigger(() => itemPopoverHtml(info)) })
             : a.name),
           h("td", { class: "num", text: R.fmtMod(a.toHit) }),
-          h("td", { text: a.versatile ? `${a.damage} (${a.versatile} two-handed)` : a.damage }),
+          h("td", { text: [a.damage, a.versatile ? `${a.versatile} two-handed` : null, a.thrown ? `${a.thrown} thrown` : null].filter(Boolean).join("; ") }),
           h("td", {}, notes, a.mastery ? h("span", { class: "pop-trigger", tabindex: "0", text: " ⓘ",
             ...tooltipTrigger(() => popoverHtml({ name: a.mastery, meta: "Weapon mastery", body: WEAPON_MASTERIES[a.mastery] || "" })) }) : null));
       }))),

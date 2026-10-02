@@ -479,30 +479,85 @@ export function attacks(state) {
   const pb = profBonus(totalLevel(state));
   const mastered = masteredWeapons(state);
   const archery = hasFightingStyle(state, "archery");
+  const dueling = hasFightingStyle(state, "duelling");
+  const thrownStyle = hasFightingStyle(state, "thrownWeapon");
+  const unarmedStyle = hasFightingStyle(state, "unarmedFighting");
   const signed = (n) => (n === 0 ? "" : n > 0 ? ` + ${n}` : ` - ${-n}`);
+  const dieAvg = (d) => {
+    const m = String(d).match(/^(\d+)d(\d+)$/);
+    return m ? Number(m[1]) * (Number(m[2]) + 1) / 2 : Number(d) || 0;
+  };
+
+  /* Monk Martial Arts: only while wearing no armor and no Shield. */
+  const monk = classEntries(state).find((e) => e.key === "monk");
+  const maTrack = monk && (CLASSES.monk.tracks || []).find((t) => t.label === "Martial Arts Die");
+  const maDie = maTrack ? maTrack.byLevel[(monk.levels || 1) - 1] : null;
+  const acNow = acDetail(state);
+  const unarmored = acNow.armorKey === "none" || acNow.armorKey === "clothes";
+  const martialArts = !!maDie && unarmored && !acNow.shield;
+  const isMonkWeapon = (w) => w.type === "melee" && (w.category === "simple" || w.properties.includes("Light"));
+
   const out = []; const seen = new Set();
   (state.inventory || []).forEach((it) => {
     const info = itemInfo(it.ref);
     if (!info || info.kind !== "weapon" || seen.has(info.key)) return;
     seen.add(info.key);
     const w = info;
+    const notes = [];
     const finesse = w.properties.includes("Finesse");
-    const ability = w.type === "ranged" ? "dex" : (finesse && mods.dex > mods.str ? "dex" : "str");
+    const monkWeapon = martialArts && isMonkWeapon(w);
+    const ability = w.type === "ranged" ? "dex" : ((finesse || monkWeapon) && mods.dex > mods.str ? "dex" : "str");
+    /* The Martial Arts die replaces a Monk weapon's die when it's bigger. */
+    let die = w.damage;
+    if (monkWeapon && dieAvg(maDie) > dieAvg(w.damage)) { die = maDie; notes.push("Martial Arts die"); }
+    const mod = mods[ability];
     const proficient = isWeaponProficient(state, info.key);
-    const toHit = mods[ability] + (proficient ? pb : 0) + (archery && w.type === "ranged" ? 2 : 0);
+    const toHit = mod + (proficient ? pb : 0) + (archery && w.type === "ranged" ? 2 : 0);
+    if (archery && w.type === "ranged") notes.push("Archery +2 to hit");
+    /* Dueling: a one-handed melee weapon and no other weapons held. */
+    const duel = dueling && w.type === "melee" && !w.properties.includes("Two-Handed") ? 2 : 0;
+    if (duel) notes.push("Dueling +2 damage when it's your only weapon, in one hand");
+    /* Thrown Weapon Fighting: +2 on a ranged attack with a Thrown weapon.
+       Throwing a melee weapon is a ranged attack, so Dueling doesn't apply
+       to the throw — it gets its own damage figure. */
+    const hasThrown = w.properties.includes("Thrown");
+    if (thrownStyle && hasThrown) notes.push("Thrown Weapon Fighting +2 damage when thrown");
+    const thrown = hasThrown && w.type === "melee" && (thrownStyle || duel)
+      ? `${die}${signed(mod + (thrownStyle ? 2 : 0))} ${w.damageType}` : null;
+    const rangedThrownBonus = thrownStyle && hasThrown && w.type === "ranged" ? 2 : 0;   // the Dart
+    const versatileDie = w.versatile ? (monkWeapon && dieAvg(maDie) > dieAvg(w.versatile) ? maDie : w.versatile) : null;
     out.push({
       key: info.key, name: w.name, ability, proficient, toHit,
-      damage: `${w.damage}${signed(mods[ability])} ${w.damageType}`,
-      versatile: w.versatile ? `${w.versatile}${signed(mods[ability])}` : null,
+      damage: `${die}${signed(mod + duel + rangedThrownBonus)} ${w.damageType}`,
+      versatile: versatileDie ? `${versatileDie}${signed(mod)}` : null,
+      thrown,
       range: w.range || null,
       properties: w.properties, propertiesText: w.propertiesText,
       mastery: mastered.has(info.key) ? w.mastery : null,
-      weaponMastery: w.mastery
+      weaponMastery: w.mastery,
+      notes
     });
   });
+
+  /* Unarmed Strike: 1 + Str normally; Unarmed Fighting makes it 1d8 + Str
+     (1d6 holding a weapon or Shield); Martial Arts makes it the Martial Arts
+     die + Str or Dex. The best option the character has is shown. */
+  const uNotes = [];
+  let uAbility = "str", uDie = null;
+  if (unarmedStyle) { uDie = "1d8"; uNotes.push("Unarmed Fighting: 1d6 instead if you hold a weapon or Shield"); }
+  if (martialArts) {
+    if (!uDie || dieAvg(maDie) >= dieAvg(uDie)) uDie = maDie;
+    if (mods.dex > mods.str) uAbility = "dex";
+    uNotes.push("Martial Arts: also as a Bonus Action");
+    if ((monk.levels || 0) >= 6) uNotes.push("Empowered Strikes: can deal Force damage");
+  } else if (maDie) {
+    uNotes.push("Martial Arts needs no armor and no Shield");
+  }
+  const uMod = mods[uAbility];
   out.push({
-    key: "unarmed", name: "Unarmed Strike", ability: "str", proficient: true, toHit: mods.str + pb,
-    damage: `${Math.max(0, 1 + mods.str)} Bludgeoning`, properties: [], propertiesText: "", mastery: null
+    key: "unarmed", name: "Unarmed Strike", ability: uAbility, proficient: true, toHit: uMod + pb,
+    damage: uDie ? `${uDie}${signed(uMod)} Bludgeoning` : `${Math.max(0, 1 + uMod)} Bludgeoning`,
+    properties: [], propertiesText: "", mastery: null, notes: uNotes
   });
   return out;
 }

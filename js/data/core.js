@@ -176,13 +176,13 @@ export const FIGHTING_STYLES = {
   archery:          { name: "Archery",            text: "+2 to attack rolls with Ranged weapons." },
   blindFighting:    { name: "Blind Fighting",     text: "Blindsight 10 ft. — you can see anything in that range that isn't Invisible or behind cover, even while Blinded or in Darkness." },
   defense:          { name: "Defense",            text: "+1 AC while wearing armor." },
-  duelling:         { name: "Duelling",           text: "+2 damage when you hit with a one-handed melee weapon and carry no other weapons." },
-  greatWeapon:      { name: "Great Weapon Fighting", text: "When a Heavy two-handed melee weapon's damage die rolls 1 or 2, treat it as a 3." },
+  duelling:         { name: "Dueling",            text: "+2 to damage rolls with a Melee weapon you hold in one hand while holding no other weapons." },
+  greatWeapon:      { name: "Great Weapon Fighting", text: "With a Melee weapon held in two hands that has the Two-Handed or Versatile property, treat any 1 or 2 on a damage die as a 3." },
   interception:     { name: "Interception",        text: "Reaction when a creature within 5 ft. is hit: reduce the damage by 1d10 + your Proficiency Bonus (not below 0). Needs a Shield or a wielded weapon." },
   protection:       { name: "Protection",          text: "Reaction while holding a Shield: impose Disadvantage on an attack roll against a creature within 5 ft. of you." },
-  thrownWeapon:     { name: "Thrown Weapon Fighting", text: "+2 damage when you hit with a thrown weapon, and you can draw the weapon as part of the attack." },
+  thrownWeapon:     { name: "Thrown Weapon Fighting", text: "+2 to the damage roll when you hit with a ranged attack using a weapon that has the Thrown property." },
   twoWeapon:        { name: "Two-Weapon Fighting", text: "Add the relevant ability modifier to the damage of the extra attack from Light-weapon two-weapon fighting." },
-  unarmedFighting:  { name: "Unarmed Fighting",    text: "Unarmed Strike damage becomes 1d6 + Str (1d8 with both hands free), and you deal 1d4 automatically to a creature you are Grappling." }
+  unarmedFighting:  { name: "Unarmed Fighting",    text: "Your Unarmed Strike can deal 1d6 + Strength modifier Bludgeoning damage (1d8 if you hold no weapons or Shield), and at the start of each of your turns you can deal 1d4 Bludgeoning to one creature you have Grappled." }
 };
 
 /* Which styles each class may pick from. */
