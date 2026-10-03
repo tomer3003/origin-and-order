@@ -2990,6 +2990,7 @@ function rollExpr(expr, crit) {
   const clean = String(expr).replace(/[A-Za-z]+$/g, "").replace(/\s+/g, "");
   const terms = clean.match(/[+-]?[^+-]+/g) || [];
   let total = 0; const parts = [];
+  const dice = [];
   terms.forEach((term) => {
     const sign = term.startsWith("-") ? -1 : 1;
     const body = term.replace(/^[+-]/, "");
@@ -2997,13 +2998,138 @@ function rollExpr(expr, crit) {
     if (m) {
       const n = (Number(m[1]) || 1) * (crit ? 2 : 1); const s = Number(m[2]);
       const rolls = Array.from({ length: n }, () => rollDieFair(s));
+      rolls.forEach((v) => dice.push({ sides: s, value: v }));
       const sum = rolls.reduce((a, b) => a + b, 0);
       total += sign * sum; parts.push(`${sign < 0 ? "−" : ""}${n}d${s}[${rolls.join(",")}]`);
     } else if (/^\d+$/.test(body)) {
       total += sign * Number(body); parts.push(`${sign < 0 ? "−" : "+"}${body}`);
     }
   });
-  return { total, detail: parts.join(" ") };
+  return { total, detail: parts.join(" "), dice };
+}
+
+/* ---- Dice tray animation ----
+
+   Every roll in Play mode shows its dice here: each die is drawn in its own
+   shape, tumbles in while its face flickers through random numbers, then
+   lands on the real result (already decided — the animation only shows
+   it). Dice that don't count (the other d20 of advantage/disadvantage) are
+   dimmed; natural 20s and 1s on a d20 are highlighted. The tray lives on
+   <body>, outside everything rerender() rebuilds, so it survives the
+   re-render each roll triggers. Honors prefers-reduced-motion. */
+
+const DIE_SHAPES = {
+  4: "50,8 94,88 6,88",
+  6: "16,16 84,16 84,84 16,84",
+  8: "50,5 93,50 50,95 7,50",
+  10: "50,5 93,40 50,95 7,40",
+  12: "50,6 94,38 77,93 23,93 6,38",
+  20: "50,4 93,27 93,73 50,96 7,73 7,27",
+  100: "50,5 93,40 50,95 7,40"
+};
+/* Facet lines so the d20 and d12 read as solids, not flat polygons. */
+const DIE_FACETS = {
+  20: "M50 4 L28 62 L72 62 Z M7 27 L28 62 M93 27 L72 62 M50 96 L28 62 M50 96 L72 62",
+  12: "M50 6 L50 30 M6 38 L28 52 M94 38 L72 52 M23 93 L35 75 M77 93 L65 75 M50 30 L72 52 L65 75 L35 75 L28 52 Z",
+  8: "M7 50 L93 50",
+  10: "M7 40 L50 60 L93 40 M50 60 L50 95"
+};
+
+function dieSvg(sides, value) {
+  const pts = DIE_SHAPES[sides] || DIE_SHAPES[6];
+  const facets = DIE_FACETS[sides];
+  const y = sides === 4 ? 70 : sides === 20 ? 50 : 54;
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">
+    <polygon class="die-body" points="${pts}"/>
+    ${facets ? `<path class="die-facet" d="${facets}"/>` : ""}
+    <text class="die-num" x="50" y="${y}" text-anchor="middle" dominant-baseline="middle">${value}</text>
+  </svg>`;
+}
+
+let trayHideTimer = null;
+function diceTray() {
+  let tray = document.getElementById("diceTray");
+  if (!tray) {
+    tray = document.createElement("div");
+    tray.id = "diceTray";
+    tray.className = "dice-tray";
+    tray.setAttribute("role", "status");
+    tray.setAttribute("aria-live", "polite");
+    tray.addEventListener("click", () => tray.classList.remove("show"));
+    tray.addEventListener("mouseenter", () => clearTimeout(trayHideTimer));
+    tray.addEventListener("mouseleave", () => { trayHideTimer = setTimeout(() => tray.classList.remove("show"), 1500); });
+    document.body.appendChild(tray);
+  }
+  return tray;
+}
+
+/* showRoll({ title, dice: [{ sides, value, dim? }], total, detail, tone }) */
+function showRoll({ title, dice = [], total, detail, tone }) {
+  const tray = diceTray();
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const MAX = 14;
+  const shown = dice.slice(0, MAX);
+  clearTimeout(trayHideTimer);
+  tray.className = `dice-tray show${tone ? " " + tone : ""}`;
+  tray.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "tray-title";
+  head.textContent = title;
+  const row = document.createElement("div");
+  row.className = "tray-dice";
+  const foot = document.createElement("div");
+  foot.className = "tray-total";
+
+  const dieEls = shown.map((d, i) => {
+    const el = document.createElement("div");
+    const nat = d.sides === 20 && !d.dim ? (d.value === 20 ? " nat20" : d.value === 1 ? " nat1" : "") : "";
+    el.className = `die d${d.sides}${d.dim ? " dim" : ""}${nat}${reduced ? "" : " tumble"}`;
+    el.style.animationDelay = `${i * 70}ms`;
+    el.innerHTML = dieSvg(d.sides, reduced ? d.value : rollDieFair(d.sides));
+    el.dataset.final = String(d.value);
+    row.appendChild(el);
+    return el;
+  });
+  if (dice.length > MAX) {
+    const more = document.createElement("div");
+    more.className = "tray-more";
+    more.textContent = `+${dice.length - MAX} more`;
+    row.appendChild(more);
+  }
+  foot.innerHTML = `<b>${total}</b>${detail ? `<span>${escapeHtml(detail)}</span>` : ""}`;
+  tray.append(head, row, foot);
+
+  const settle = () => {
+    dieEls.forEach((el, i) => {
+      const num = el.querySelector(".die-num");
+      if (num) num.textContent = el.dataset.final;
+      el.classList.add("landed");
+    });
+    foot.classList.add("show");
+  };
+  if (reduced) { settle(); }
+  else {
+    /* Flicker faces while tumbling, then land on the real values. */
+    const start = performance.now();
+    const spin = () => {
+      const t = performance.now() - start;
+      dieEls.forEach((el, i) => {
+        if (el.classList.contains("landed")) return;
+        if (t > 650 + i * 70) {
+          el.querySelector(".die-num").textContent = el.dataset.final;
+          el.classList.add("landed");
+        } else {
+          const sides = Number(el.className.match(/\bd(\d+)\b/)[1]);
+          el.querySelector(".die-num").textContent = rollDieFair(sides);
+        }
+      });
+      if (dieEls.some((el) => !el.classList.contains("landed"))) requestAnimationFrame(() => setTimeout(spin, 45));
+      else foot.classList.add("show");
+    };
+    spin();
+  }
+  trayHideTimer = setTimeout(() => tray.classList.remove("show"), 3600 + shown.length * 70);
 }
 
 /* A D20 Test: advantage/disadvantage from the toolbar, minus 2 per
@@ -3018,6 +3144,16 @@ function d20Test(label, bonus, opts = {}) {
   const dice = rollMode === "normal" ? `d20[${a}]` : `d20[${a},${b}] ${rollMode === "adv" ? "adv" : "dis"}`;
   const tag = nat === 20 ? " — natural 20!" : nat === 1 ? " — natural 1" : "";
   playCommit(`${label}: ${total} (${dice} ${R.fmtMod(bonus)}${exh ? ` −${exh} exhaustion` : ""})${tag}${opts.suffix ? " " + opts.suffix : ""}`);
+  /* With advantage/disadvantage both d20s land; the one not used is dimmed. */
+  const keptA = rollMode === "normal" || a === nat;
+  const trayDice = rollMode === "normal" ? [{ sides: 20, value: a }]
+    : [{ sides: 20, value: a, dim: !keptA }, { sides: 20, value: b, dim: keptA }];
+  showRoll({
+    title: `${label}${rollMode === "adv" ? " · advantage" : rollMode === "dis" ? " · disadvantage" : ""}`,
+    dice: trayDice, total,
+    detail: `${nat} ${R.fmtMod(bonus)}${exh ? ` −${exh} exhaustion` : ""}${tag}`,
+    tone: nat === 20 ? "crit" : nat === 1 ? "fumble" : ""
+  });
   return { nat, total };
 }
 
@@ -3090,6 +3226,8 @@ function deathSave() {
   if (p.deathSaves.s >= 3) msg += " — three successes: you're Stable";
   if (p.deathSaves.f >= 3) { p.dead = true; msg += " — three failures: you die"; }
   playCommit(msg);
+  showRoll({ title: "Death Saving Throw", dice: [{ sides: 20, value: r }], total: r >= 10 ? "Success" : "Failure",
+    detail: msg.replace(/^Death Saving Throw: d20[d+] — /, ""), tone: r === 20 ? "crit" : r === 1 ? "fumble" : "" });
 }
 
 /* ---- Rests ---- */
@@ -3233,6 +3371,7 @@ function buildPlayView(panel) {
           const r = rollDieFair(Number(die));
           p.hitDiceUsed[die] = used + 1;
           heal(Math.max(1, r + mods.con), `Hit Die d${die}[${r}] ${R.fmtMod(mods.con)}: healed`);
+          showRoll({ title: `Hit Die d${die}`, dice: [{ sides: Number(die), value: r }], total: Math.max(1, r + mods.con), detail: `${r} ${R.fmtMod(mods.con)} Con — healed`, tone: "heal" });
         }));
     })));
 
@@ -3285,9 +3424,10 @@ function buildPlayView(panel) {
           const r = rollExpr(dmgExpr, crit);
           lastCrit[a.key] = false;
           playCommit(`${a.name} damage${crit ? " (critical)" : ""}: ${r.total} ${type} (${r.detail})`);
+          showRoll({ title: `${a.name} damage${crit ? " · critical" : ""}`, dice: r.dice, total: `${r.total} ${type}`, detail: r.detail, tone: crit ? "crit" : "dmg" });
         }, "dmg"),
         a.thrown ? rollBtn(`Thrown ${a.thrown}`, () => { const r = rollExpr(a.thrown.replace(/\s+[A-Z][a-z]+$/, "")); playCommit(`${a.name} thrown damage: ${r.total} (${r.detail})`); }, "dmg") : null,
-        a.versatile ? rollBtn(`2H ${a.versatile}`, () => { const r = rollExpr(a.versatile); playCommit(`${a.name} two-handed damage: ${r.total} ${type} (${r.detail})`); }, "dmg") : null,
+        a.versatile ? rollBtn(`2H ${a.versatile}`, () => { const r = rollExpr(a.versatile); playCommit(`${a.name} two-handed damage: ${r.total} ${type} (${r.detail})`); showRoll({ title: `${a.name} two-handed`, dice: r.dice, total: `${r.total} ${type}`, detail: r.detail, tone: "dmg" }); }, "dmg") : null,
         (a.notes || []).length ? h("div", { class: "hint", text: a.notes.join(" · ") }) : null);
     })),
     h("div", { class: "hint", text: "A natural 20 on an attack makes the next damage roll for that weapon a Critical Hit (dice rolled twice)." })));
@@ -3314,9 +3454,9 @@ function buildPlayView(panel) {
   /* Dice roller */
   const expr = h("input", { type: "text", class: "play-amt wide", placeholder: "e.g. 2d6+3", "aria-label": "Dice expression",
     onkeydown: (e) => { if (e.key === "Enter") doRoll(); } });
-  const doRoll = () => { const v = expr.value.trim(); if (!v) return; const r = rollExpr(v); playCommit(`Rolled ${v}: ${r.total} (${r.detail})`); };
+  const doRoll = () => { const v = expr.value.trim(); if (!v) return; const r = rollExpr(v); playCommit(`Rolled ${v}: ${r.total} (${r.detail})`); showRoll({ title: v, dice: r.dice, total: r.total, detail: r.detail }); };
   grid.appendChild(card("Dice",
-    h("div", { class: "dice-row" }, [4, 6, 8, 10, 12, 20, 100].map((s) => rollBtn(`d${s}`, () => { const r = rollDieFair(s); playCommit(`d${s}: ${r}`); }))),
+    h("div", { class: "dice-row" }, [4, 6, 8, 10, 12, 20, 100].map((s) => rollBtn(`d${s}`, () => { const r = rollDieFair(s); playCommit(`d${s}: ${r}`); showRoll({ title: `d${s}`, dice: [{ sides: s, value: r }], total: r, tone: s === 20 && r === 20 ? "crit" : s === 20 && r === 1 ? "fumble" : "" }); }))),
     h("div", { class: "hp-controls" }, expr, h("button", { class: "btn small", type: "button", onclick: doRoll }, "Roll"))));
 
   /* Inventory: consumables with − / +, coins */

@@ -921,3 +921,17 @@ A "Play" button (on the Character Sheet step, and per character in Saved charact
   - dice buttons and a free "2d6+3" box; all rolls use `crypto.getRandomValues`
 - **Also:** conditions (2024 list), Exhaustion 0–6 (Speed −5 ft. per level; the Strength penalty for heavy armor is applied), Heroic Inspiration, a quick +/− inventory for consumables, coins, notes, and a 60-entry log.
 - **Verified live** (Life Cleric 5 and Warlock 11): temp HP absorbing, the Concentration DC prompt and the drop-to-0 ending, death saves, healing clearing them, Channel Divinity one-back on a Short Rest, a full Long Rest reset, Pact slot casting and Short Rest refill, the Arcanum used-flag, advantage rolls, attack and damage rolls, and autosave to the saved character. No console errors. The mobile layout wasn't measurable (the app window wasn't painting), but the CSS collapses to one column below 560 px.
+
+### Done: dice-rolling animation (Play mode)
+
+Every Play-mode roll now pops up a dice tray (`showRoll()` in app.js, styles at the end of style.css):
+- d20 tests, death saves, Hit Dice, attack, thrown and two-handed damage, the dice buttons, and the free-form box.
+- **Drawing:** each die is an inline SVG in its own shape (d4 triangle, d6 square, d8 diamond, d10/d100 kite, d12 pentagon, d20 faceted hexagon), colour-coded by type.
+- **Motion:** dice tumble in with a staggered bounce while the face flickers random numbers, then land on the real result. The result is decided before the animation starts; the animation only reveals it. The total and breakdown fade in once every die has landed.
+- **Advantage/disadvantage:** both d20s are shown and the unused one is dimmed.
+- **Highlights:** a natural 20 glows gold (crit tone on the tray) and a natural 1 is red; Hit Dice use a healing tone.
+- **Large rolls:** more than 14 dice shows 14 plus "+N more".
+- **Dismissing:** the tray auto-hides after about 3.5 s, stays open while hovered, and closes on click. It lives on `<body>`, outside what `rerender()` rebuilds, so the re-render each roll triggers doesn't cut it off.
+- **Accessibility:** `prefers-reduced-motion` turns off the tumbling and shows results immediately; the tray is an `aria-live` status region.
+- `rollExpr()` now also returns the individual dice.
+- **Verified live:** mid-roll (tumbling, random faces, total hidden) and landed (faces match the logged results), advantage with the unused d20 dimmed, a natural 20 crit tone, 20d6 overflow, and screenshots of both states. No console errors.
