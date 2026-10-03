@@ -84,6 +84,7 @@ export function defaultState() {
     coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
     worn: null,             // { armor, shield } once chosen in the Equipment step
     bgEquipment: "A",       // background kit (A) or its 50 GP (B)
+    play: null,             // live play tracking (rules.js newPlayState); null until first played
 
     alignment: null,
     pronouns: "",
@@ -172,6 +173,7 @@ export function migrate(raw) {
   out.coins = { ...base.coins, ...(raw.coins && typeof raw.coins === "object" ? raw.coins : {}) };
   out.worn = raw.worn && typeof raw.worn === "object" ? { armor: raw.worn.armor || null, shield: !!raw.worn.shield } : null;
   out.bgEquipment = raw.bgEquipment === "B" ? "B" : "A";
+  out.play = raw.play && typeof raw.play === "object" ? raw.play : null;
 
   ["speciesSkills", "featSkills", "featExpertise"].forEach((k) => {
     if (!Array.isArray(out[k])) out[k] = [];
@@ -226,7 +228,7 @@ function writeIndex(list) {
 
 export function saveCharacter(state, summary) {
   const id = state.id || makeId();
-  const stored = { ...state, id, version: STATE_VERSION, levelUp: null };
+  const stored = { ...state, id, version: STATE_VERSION, levelUp: null, playing: false };
   try {
     localStorage.setItem(CHAR_KEY(id), JSON.stringify(stored));
   } catch {

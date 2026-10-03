@@ -893,3 +893,31 @@ cleanly in top-to-bottom order.
   - **Monk Martial Arts:** only with no armor and no Shield. Unarmed Strikes and Monk weapons (Simple melee, or Martial melee with Light) use the Martial Arts die when it's bigger, plus Dex if it's higher. Empowered Strikes are noted from level 6.
   - Fighting-style summaries were corrected against the PHB: "Dueling" spelling, Thrown Weapon Fighting (the 2014 "draw as part of the attack" clause removed), Unarmed Fighting's d8 condition, and Great Weapon Fighting's Two-Handed/Versatile requirement.
 - **Not modeled:** automatic coin deduction when buying.
+
+### Done: Play mode (live table tracking)
+
+A "Play" button (on the Character Sheet step, and per character in Saved characters) switches to a full-width table view. `state.playing` toggles it; `body.playing` hides the step tracker and sidebar. Code lives in the "Play mode" section of app.js; the rules are `R.playResources`, `R.hitDicePool`, `R.newPlayState` and `R.CONDITIONS`.
+
+- **State:** `state.play` stores only what's been used (`hpLost`, `temp`, death saves, `hitDiceUsed`, `slotsUsed`, `pactUsed`, `arcanumUsed`, `resUsed`, conditions, exhaustion, inspiration, concentration, log, notes), so level-ups and new maximums just work. It's saved with the character and survives export and import. `playing` is never saved into a character.
+  - **Gotcha:** `play()` must return the SAME object every time. An early version rebuilt it on each call and changes made through an older reference were lost (Concentration vanished).
+- **HP:**
+  - **Damage:** temp HP absorbs first. At 0 HP, any damage counts as a death-save failure. Massive damage (leftover ≥ max HP) kills.
+  - **Concentration:** damage prompts the save DC, max(10, half the damage), capped at 30. Dropping to 0 ends Concentration, because you're Unconscious.
+  - **Healing and temp HP:** healing clears death saves. Temp HP doesn't stack; the higher value is kept.
+  - **Death saves:** natural 20 regains 1 HP, natural 1 counts as two failures, 3 failures means dead (with an Undo).
+- **Rests** (2024 PHB):
+  - **Short Rest:** "short" resources refill, "shortOne" resources get one back, and Pact slots refill. Hit Dice are spent separately (roll + Con, minimum 1).
+  - **Long Rest:** all HP, all Hit Dice, all slots, Arcanum and resources; Concentration ends; Exhaustion −1. It asks to confirm at 0 HP.
+- **Resources:** class table columns that can be spent, mapped to their recharge in `CLASS_RESOURCE_RECHARGE` (Rage, Channel Divinity, Wild Shape and Second Wind give one back per Short Rest; Action Surge and Focus fully recharge on a Short Rest; the rest on a Long Rest). Also Bardic Inspiration (Cha uses; Short Rest from level 5), Arcane Recovery, and every subclass resource, parsed from `tracksFor`. Pips: clicking a filled one spends one, clicking an empty one restores one.
+- **Spellcasting:**
+  - slot pips per level, plus Pact slots and Mystic Arcanum (1/Long Rest)
+  - every ready spell (cantrips, prepared or known, subclass always-prepared, Magical Discoveries) with a Cast control offering only slots high enough to cast it
+  - Concentration tracking that replaces the previous Concentration spell
+  - feat and non-caster subclass spells with a "cast free, 1/Long Rest" button
+- **Rolls:**
+  - checks, saves, skills, initiative (Alert adds Proficiency Bonus), attacks and damage
+  - a normal / advantage / disadvantage toggle; Exhaustion's −2 per level on D20 Tests
+  - a natural 20 on an attack makes that weapon's next damage roll a crit (dice rolled twice)
+  - dice buttons and a free "2d6+3" box; all rolls use `crypto.getRandomValues`
+- **Also:** conditions (2024 list), Exhaustion 0–6 (Speed −5 ft. per level; the Strength penalty for heavy armor is applied), Heroic Inspiration, a quick +/− inventory for consumables, coins, notes, and a 60-entry log.
+- **Verified live** (Life Cleric 5 and Warlock 11): temp HP absorbing, the Concentration DC prompt and the drop-to-0 ending, death saves, healing clearing them, Channel Divinity one-back on a Short Rest, a full Long Rest reset, Pact slot casting and Short Rest refill, the Arcanum used-flag, advantage rolls, attack and damage rolls, and autosave to the saved character. No console errors. The mobile layout wasn't measurable (the app window wasn't painting), but the CSS collapses to one column below 560 px.

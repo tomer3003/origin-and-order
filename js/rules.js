@@ -583,6 +583,84 @@ export function equipmentStepIssues(state) {
   return issues;
 }
 
+/* ---------------- Play mode ----------------
+
+   Everything the live play screen tracks is derived here; state.play holds
+   only what's been USED (slots spent, resource uses spent, HP lost), so a
+   level-up that raises a maximum just works.
+
+   Recharge kinds: "long" (all back on a Long Rest), "short" (all back on a
+   Short or Long Rest), "shortOne" (one back on a Short Rest, all on a Long
+   Rest) — as each feature's 2024 text says. */
+
+export const CONDITIONS = ["Blinded", "Charmed", "Deafened", "Frightened", "Grappled", "Incapacitated", "Invisible",
+  "Paralyzed", "Petrified", "Poisoned", "Prone", "Restrained", "Stunned", "Unconscious"];
+
+/* Class table columns that are spendable, and how they recharge. Columns
+   that aren't uses (Rage Damage, dice sizes, "known" counts, Pact slots —
+   those have their own tracker) are left out. */
+const CLASS_RESOURCE_RECHARGE = {
+  "Rages": "shortOne", "Channel Divinity": "shortOne", "Wild Shape": "shortOne", "Second Wind": "shortOne",
+  "Action Surge": "short", "Indomitable": "long", "Focus Points": "short", "Lay On Hands Pool": "long",
+  "Favored Enemy": "long", "Sorcery Points": "long"
+};
+
+export function playResources(state) {
+  const mods = abilityMods(state);
+  const out = [];
+  classEntries(state).forEach((entry) => {
+    const cls = CLASSES[entry.key];
+    const lvl = entry.levels || 0;
+    (cls.tracks || []).forEach((t) => {
+      const recharge = CLASS_RESOURCE_RECHARGE[t.label];
+      const max = Number(t.byLevel[lvl - 1]);
+      if (!recharge || !max) return;
+      out.push({
+        id: `${entry.key}:${t.label}`, label: t.label, max, recharge, className: cls.name,
+        unit: t.label === "Lay On Hands Pool" ? "HP" : null,
+        note: t.label === "Favored Enemy" ? "Free Hunter's Mark casts" : null
+      });
+    });
+    /* Uses the class tables don't list as a column. */
+    if (entry.key === "bard") {
+      out.push({ id: "bard:Bardic Inspiration", label: `Bardic Inspiration (${(cls.tracks.find((t) => t.label === "Bardic Die") || { byLevel: [] }).byLevel[lvl - 1] || "d6"})`,
+        max: Math.max(1, mods.cha), recharge: lvl >= 5 ? "short" : "long", className: cls.name });
+    }
+    if (entry.key === "wizard") {
+      out.push({ id: "wizard:Arcane Recovery", label: "Arcane Recovery", max: 1, recharge: "long", className: cls.name,
+        note: `On a Short Rest, recover slots totalling up to ${Math.ceil(lvl / 2)} levels (none above 5)` });
+    }
+  });
+  /* Subclass resources, read back from tracksFor's formatted values. */
+  tracksFor(state).filter((t) => t.subclass).forEach((t) => {
+    const v = String(t.value);
+    let max = null, recharge = "long", unit = null;
+    let m;
+    if ((m = v.match(/^(\d+)\/(Short or Long|Long) Rest$/))) { max = Number(m[1]); recharge = m[2] === "Long" ? "long" : "short"; }
+    else if ((m = v.match(/^(\d+)d\d+$/))) { max = Number(m[1]); unit = `${v.replace(/^\d+/, "")} dice`; }
+    else if ((m = v.match(/^(\d+) d20s$/))) { max = Number(m[1]); unit = "d20 rolls"; }
+    else if ((m = v.match(/^(\d+)$/))) { max = Number(m[1]); unit = "HP"; }
+    if (!max) return;
+    if (t.label === "Superiority Dice") recharge = "short";
+    if (t.label === "Psionic Energy Dice") recharge = "shortOne";
+    out.push({ id: `${t.classKey}:${t.label}`, label: t.label, max, recharge, unit, className: t.subclass });
+  });
+  return out;
+}
+
+/* Hit Point Dice by size: { 10: 3, 8: 2 }. */
+export function hitDicePool(state) {
+  const pool = {};
+  levelLog(state).forEach((l) => { pool[l.hitDie] = (pool[l.hitDie] || 0) + 1; });
+  return pool;
+}
+
+/* A fresh play state for this character. */
+export function newPlayState() {
+  return { hpLost: 0, temp: 0, deathSaves: { s: 0, f: 0 }, dead: false, hitDiceUsed: {}, slotsUsed: {}, pactUsed: 0,
+    arcanumUsed: {}, resUsed: {}, conditions: [], exhaustion: 0, inspiration: false, concentration: null, log: [], notes: "" };
+}
+
 /* ---------------- Armour class ---------------- */
 
 /* Unarmored Defense can come from the class (Barbarian, Monk) or from a

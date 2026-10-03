@@ -256,6 +256,7 @@ function spellNameEl(key, extraClass) {
    shorter than the old scroll offset. */
 function rerender() {
   saveDraft(state);
+  document.body.classList.toggle("playing", !!state.playing);
   const y = window.scrollY;
   renderTracker();
   renderStepPanel();
@@ -368,6 +369,7 @@ const BUILDERS = {
 function renderStepPanel() {
   swapChildren(byId("stepPanel"), (panel) => {
     renderedGrants = new Set();
+    if (state.playing) { buildPlayView(panel); return; }
     if (state.levelUp) { buildLevelUpPanel(panel); return; }
     const key = STEPS[state.step];
     BUILDERS[key](panel);
@@ -2262,6 +2264,7 @@ function buildSheetStep(panel) {
     h("button", { class: "btn small", type: "button", onclick: () => window.print() }, "Print"),
     h("button", { class: "btn small", type: "button", onclick: () => doSave() }, "Save character"),
     h("button", { class: "btn small", type: "button", onclick: () => exportCharacter(state) }, "Export JSON"),
+    h("button", { class: "btn small primary", type: "button", onclick: startPlay }, "Play"),
     canLevelUp() ? h("button", { class: "btn small primary", type: "button", onclick: startLevelUp },
       `Level up to ${R.totalLevel(state) + 1}`) : null
   ));
@@ -2922,11 +2925,544 @@ function levelUpSpellBlocks(before, index, lvl) {
 }
 
 /* =======================================================================
+   Play mode — a live table view of a finished character
+
+   HP (damage / heal / temp, death saves, massive damage), Hit Point Dice,
+   spell slots + Pact slots + Mystic Arcanum, class and subclass resources
+   with their real recharge rules, conditions and Exhaustion, Heroic
+   Inspiration, Concentration, click-to-roll checks/saves/attacks/damage, a
+   free dice roller, consumables, coins, notes and a log.
+
+   state.playing toggles the view; state.play (R.newPlayState) holds only
+   what's been used, so it survives level-ups. Every change autosaves the
+   draft and, for a saved character, the character itself.
+   ======================================================================= */
+
+/* The live play state, created on first use. Missing fields are filled in
+   place: every part of the view must share ONE object, or a change made
+   through an older reference would be lost. */
+function play() {
+  if (!state.play || typeof state.play !== "object") state.play = R.newPlayState();
+  const defaults = R.newPlayState();
+  Object.keys(defaults).forEach((k) => { if (state.play[k] === undefined) state.play[k] = defaults[k]; });
+  return state.play;
+}
+
+let playSaveTimer = null;
+function playCommit(message) {
+  if (message) playLog(message);
+  saveDraft(state);
+  clearTimeout(playSaveTimer);
+  playSaveTimer = setTimeout(() => { if (state.id) saveCharacter(state, summaryLine()); }, 400);
+  rerender();
+}
+
+function playLog(text) {
+  const p = play();
+  p.log = [{ t: Date.now(), text }, ...(p.log || [])].slice(0, 60);
+}
+
+function startPlay() {
+  play();
+  state.playing = true;
+  rerender();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function stopPlay() {
+  state.playing = false;
+  if (state.id) saveCharacter(state, summaryLine());
+  goToStep(STEPS.length - 1);
+}
+
+/* ---- Dice ---- */
+
+function rollDieFair(sides) {
+  const a = new Uint32Array(1);
+  crypto.getRandomValues(a);
+  return 1 + (a[0] % sides);
+}
+
+/* "2d6 + 3", "1d8 - 1", "4": total plus a readable breakdown. With
+   `crit`, every die is rolled twice (2024 Critical Hit: roll the damage
+   dice twice). */
+function rollExpr(expr, crit) {
+  const clean = String(expr).replace(/[A-Za-z]+$/g, "").replace(/\s+/g, "");
+  const terms = clean.match(/[+-]?[^+-]+/g) || [];
+  let total = 0; const parts = [];
+  terms.forEach((term) => {
+    const sign = term.startsWith("-") ? -1 : 1;
+    const body = term.replace(/^[+-]/, "");
+    const m = body.match(/^(\d*)d(\d+)$/i);
+    if (m) {
+      const n = (Number(m[1]) || 1) * (crit ? 2 : 1); const s = Number(m[2]);
+      const rolls = Array.from({ length: n }, () => rollDieFair(s));
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      total += sign * sum; parts.push(`${sign < 0 ? "−" : ""}${n}d${s}[${rolls.join(",")}]`);
+    } else if (/^\d+$/.test(body)) {
+      total += sign * Number(body); parts.push(`${sign < 0 ? "−" : "+"}${body}`);
+    }
+  });
+  return { total, detail: parts.join(" ") };
+}
+
+/* A D20 Test: advantage/disadvantage from the toolbar, minus 2 per
+   Exhaustion level. Returns the natural roll too, for crits. */
+let rollMode = "normal";
+function d20Test(label, bonus, opts = {}) {
+  const p = play();
+  const a = rollDieFair(20), b = rollDieFair(20);
+  const nat = rollMode === "adv" ? Math.max(a, b) : rollMode === "dis" ? Math.min(a, b) : a;
+  const exh = (p.exhaustion || 0) * 2;
+  const total = nat + bonus - exh;
+  const dice = rollMode === "normal" ? `d20[${a}]` : `d20[${a},${b}] ${rollMode === "adv" ? "adv" : "dis"}`;
+  const tag = nat === 20 ? " — natural 20!" : nat === 1 ? " — natural 1" : "";
+  playCommit(`${label}: ${total} (${dice} ${R.fmtMod(bonus)}${exh ? ` −${exh} exhaustion` : ""})${tag}${opts.suffix ? " " + opts.suffix : ""}`);
+  return { nat, total };
+}
+
+/* ---- HP ---- */
+
+function playVitals() {
+  const p = play();
+  const max = R.hpMax(state);
+  const hp = Math.max(0, max - (p.hpLost || 0));
+  return { p, max, hp };
+}
+
+function takeDamage(n) {
+  if (!(n > 0)) return;
+  const { p, max, hp } = playVitals();
+  let left = n;
+  const absorbed = Math.min(p.temp || 0, left);
+  p.temp = (p.temp || 0) - absorbed; left -= absorbed;
+  const msgs = [`Took ${n} damage${absorbed ? ` (${absorbed} absorbed by temp HP)` : ""}`];
+  if (hp === 0 && left > 0) {
+    p.deathSaves.f = Math.min(3, p.deathSaves.f + 1);
+    msgs.push("— a Death Saving Throw failure while at 0 HP");
+    if (left >= max) { p.dead = true; msgs.push("— damage at least your HP maximum: you die"); }
+  } else if (left > 0) {
+    const toZero = Math.min(hp, left);
+    p.hpLost = (p.hpLost || 0) + toZero;
+    const overflow = left - toZero;
+    if (hp - toZero === 0) {
+      if (overflow >= max) { p.dead = true; msgs.push(`— dropped to 0 with ${overflow} left over (≥ max HP): you die`); }
+      else msgs.push("— dropped to 0 HP: Unconscious, making Death Saving Throws");
+    }
+  }
+  if (p.deathSaves.f >= 3) p.dead = true;
+  /* At 0 HP you're Unconscious (Incapacitated), which ends Concentration. */
+  const nowHp = Math.max(0, R.hpMax(state) - (p.hpLost || 0));
+  if (p.concentration && (nowHp === 0 || p.dead)) {
+    msgs.push(`— Concentration on ${SPELLS[p.concentration] ? SPELLS[p.concentration].name : "a spell"} ends (Unconscious)`);
+    p.concentration = null;
+  } else if (p.concentration && n > 0) {
+    msgs.push(`— Concentration on ${SPELLS[p.concentration] ? SPELLS[p.concentration].name : "a spell"}: Con save DC ${Math.min(30, Math.max(10, Math.floor(n / 2)))}`);
+  }
+  playCommit(msgs.join(" "));
+}
+
+function heal(n, source) {
+  if (!(n > 0)) return;
+  const { p, max, hp } = playVitals();
+  if (p.dead) { playCommit("Can't heal: the character is dead."); return; }
+  const gained = Math.min(n, max - hp);
+  p.hpLost = Math.max(0, (p.hpLost || 0) - n);
+  if (hp === 0 && gained > 0) p.deathSaves = { s: 0, f: 0 };
+  playCommit(`${source || "Healed"} ${gained} HP${gained < n ? ` (${n} rolled, capped at max)` : ""}`);
+}
+
+function gainTemp(n) {
+  if (!(n > 0)) return;
+  const p = play();
+  if (n > (p.temp || 0)) { p.temp = n; playCommit(`Temporary HP set to ${n}`); }
+  else playCommit(`Temporary HP ${n} ignored — you keep the higher ${p.temp} (they don't stack)`);
+}
+
+function deathSave() {
+  const p = play();
+  const r = rollDieFair(20);
+  let msg = `Death Saving Throw: d20[${r}]`;
+  if (r === 20) { p.hpLost = R.hpMax(state) - 1; p.deathSaves = { s: 0, f: 0 }; msg += " — natural 20: you regain 1 HP!"; }
+  else if (r === 1) { p.deathSaves.f = Math.min(3, p.deathSaves.f + 2); msg += " — natural 1: two failures"; }
+  else if (r >= 10) { p.deathSaves.s = Math.min(3, p.deathSaves.s + 1); msg += " — success"; }
+  else { p.deathSaves.f = Math.min(3, p.deathSaves.f + 1); msg += " — failure"; }
+  if (p.deathSaves.s >= 3) msg += " — three successes: you're Stable";
+  if (p.deathSaves.f >= 3) { p.dead = true; msg += " — three failures: you die"; }
+  playCommit(msg);
+}
+
+/* ---- Rests ---- */
+
+function shortRest() {
+  const p = play();
+  const res = R.playResources(state);
+  res.forEach((r) => {
+    const used = p.resUsed[r.id] || 0;
+    if (r.recharge === "short") p.resUsed[r.id] = 0;
+    else if (r.recharge === "shortOne" && used > 0) p.resUsed[r.id] = used - 1;
+  });
+  p.pactUsed = 0;
+  playCommit("Short Rest: Short-Rest features recharged (Pact slots, Action Surge, Focus, …; one use back for Rage, Channel Divinity, Wild Shape, Second Wind). Spend Hit Dice to heal.");
+}
+
+function longRest() {
+  const p = play();
+  if (playVitals().hp === 0 && !confirm("A Long Rest needs at least 1 HP to start. Rest anyway?")) return;
+  Object.assign(p, { hpLost: 0, temp: 0, deathSaves: { s: 0, f: 0 }, hitDiceUsed: {}, slotsUsed: {}, pactUsed: 0,
+    arcanumUsed: {}, resUsed: {}, concentration: null, exhaustion: Math.max(0, (p.exhaustion || 0) - 1) });
+  playCommit("Long Rest: all HP, Hit Point Dice, spell slots and features restored; Exhaustion −1.");
+}
+
+/* ---- Small UI pieces ---- */
+
+/* A row of pips: filled = available. Clicking a filled pip spends one,
+   clicking an empty one restores one. */
+function pips(max, used, onSet, label) {
+  const avail = Math.max(0, max - used);
+  return h("span", { class: "pips", role: "group", "aria-label": `${label}: ${avail} of ${max} available` },
+    Array.from({ length: max }, (_, i) => h("button", {
+      class: `pip${i < avail ? " on" : ""}`, type: "button",
+      title: i < avail ? "Spend one" : "Restore one",
+      "aria-label": `${label}: ${i < avail ? "spend one" : "restore one"}`,
+      onclick: () => onSet(i < avail ? used + 1 : used - 1)
+    })));
+}
+
+function counter(value, max, onSet, label) {
+  return h("span", { class: "counter" },
+    h("button", { class: "btn small ghost", type: "button", "aria-label": `Spend ${label}`, onclick: () => onSet(Math.max(0, value - 1)) }, "−"),
+    h("b", { class: "mono", text: `${value} / ${max}` }),
+    h("button", { class: "btn small ghost", type: "button", "aria-label": `Restore ${label}`, onclick: () => onSet(Math.min(max, value + 1)) }, "+"));
+}
+
+function card(title, ...kids) {
+  return h("section", { class: "play-card" }, h("h3", { text: title }), ...kids);
+}
+
+function rollBtn(text, onClick, cls) {
+  return h("button", { class: `rollbtn${cls ? " " + cls : ""}`, type: "button", onclick: onClick }, text);
+}
+
+/* ---- The view ---- */
+
+function buildPlayView(panel) {
+  const p = play();
+  const { max, hp } = playVitals();
+  const mods = R.abilityMods(state);
+  const scores = R.finalAbilities(state);
+  const pb = R.profBonus(R.totalLevel(state));
+  const ac = R.acDetail(state);
+  const exh = p.exhaustion || 0;
+  const alert = R.ownedFeatKeys(state).includes("alert");
+  const init = mods.dex + (alert ? pb : 0);
+  const wornArmor = ac.armorKey ? ARMOR[ac.armorKey] : null;
+  const heavyPenalty = wornArmor && wornArmor.strReq && scores.str < wornArmor.strReq ? 10 : 0;
+  const speed = Math.max(0, speciesSpeed() - 5 * exh - heavyPenalty);
+  const classLine = R.classEntries(state).map((e) => {
+    const cls = CLASSES[e.key]; const sub = e.subclass ? cls.subclasses[e.subclass].name : null;
+    return `${cls.name} ${e.levels}${sub ? ` (${sub})` : ""}`;
+  }).join(" / ");
+
+  /* Header */
+  panel.appendChild(h("div", { class: "play-head" },
+    h("div", {},
+      h("h2", { class: "play-name", text: state.name || "Unnamed character" }),
+      h("div", { class: "play-sub", text: `${classLine} · ${SPECIES[state.speciesKey] ? SPECIES[state.speciesKey].name : ""} · level ${R.totalLevel(state)}` })),
+    h("div", { class: "play-actions" },
+      h("div", { class: "seg", role: "group", "aria-label": "Roll mode" },
+        [["dis", "Disadv."], ["normal", "Normal"], ["adv", "Adv."]].map(([k, t]) => h("button", {
+          class: `seg-btn${rollMode === k ? " on" : ""}`, type: "button", "aria-pressed": rollMode === k ? "true" : "false",
+          onclick: () => { rollMode = k; rerender(); } }, t))),
+      h("button", { class: "btn small", type: "button", onclick: shortRest }, "Short Rest"),
+      h("button", { class: "btn small", type: "button", onclick: longRest }, "Long Rest"),
+      h("button", { class: "btn small ghost", type: "button", onclick: stopPlay }, "Back to builder"))
+  ));
+
+  const grid = h("div", { class: "play-grid" });
+  panel.appendChild(grid);
+
+  /* Vitals */
+  const amount = h("input", { type: "number", min: 0, class: "play-amt", placeholder: "Amount", "aria-label": "Amount" });
+  const take = (fn) => () => { const n = Math.floor(Number(amount.value)); if (n > 0) fn(n); };
+  const pct = max ? Math.round((hp / max) * 100) : 0;
+  grid.appendChild(h("section", { class: "play-card play-vitals" },
+    h("div", { class: "vit-top" },
+      h("div", { class: "hp-big" },
+        h("span", { class: `hp-cur${hp === 0 ? " zero" : ""}`, text: p.dead ? "DEAD" : String(hp) }),
+        h("span", { class: "hp-max", text: `/ ${max}` }),
+        p.temp ? h("span", { class: "hp-temp", text: `+${p.temp} temp` }) : null),
+      h("div", { class: "vit-stats" },
+        statTile("ac", "AC", String(ac.total)),
+        h("button", { class: "stat-tile init", type: "button", onclick: () => d20Test("Initiative", init) },
+          h("div", { class: "stat-label", text: "Initiative" }), h("span", { class: "stat-num", text: R.fmtMod(init) })),
+        statTile("pb", "Speed", `${speed}`),
+        statTile("pb", "Prof", R.fmtMod(pb)))),
+    h("div", { class: "hp-bar", role: "img", "aria-label": `${hp} of ${max} hit points` },
+      h("div", { class: `hp-fill${pct <= 25 ? " low" : pct <= 50 ? " mid" : ""}`, style: `width:${pct}%` })),
+    h("div", { class: "hp-controls" }, amount,
+      h("button", { class: "btn small danger-btn", type: "button", onclick: take(takeDamage) }, "Damage"),
+      h("button", { class: "btn small heal-btn", type: "button", onclick: take((n) => heal(n)) }, "Heal"),
+      h("button", { class: "btn small ghost", type: "button", onclick: take(gainTemp) }, "Temp HP")),
+    hp === 0 && !p.dead ? h("div", { class: "death-saves" },
+      h("span", { text: "Death saves" }),
+      h("span", { class: "ds ok", text: "✓".repeat(p.deathSaves.s) + "·".repeat(3 - p.deathSaves.s) }),
+      h("span", { class: "ds bad", text: "✗".repeat(p.deathSaves.f) + "·".repeat(3 - p.deathSaves.f) }),
+      rollBtn("Roll death save", deathSave)) : null,
+    p.dead ? h("div", { class: "hint warn", text: "Dead. Revivify, Raise Dead and the like can bring them back; or Long Rest/heal after a ruling." },
+      " ", h("button", { class: "btn small ghost", type: "button", onclick: () => { p.dead = false; p.deathSaves = { s: 0, f: 0 }; playCommit("Marked alive again"); } }, "Undo death")) : null,
+    h("div", { class: "vit-row" },
+      h("label", { class: "toggle" },
+        h("input", { type: "checkbox", checked: !!p.inspiration, onchange: (e) => { p.inspiration = e.target.checked; playCommit(e.target.checked ? "Gained Heroic Inspiration" : "Used Heroic Inspiration"); } }),
+        h("span", { text: "Heroic Inspiration" })),
+      p.concentration ? h("span", { class: "conc" }, "Concentrating: ", spellNameEl(p.concentration), " ",
+        h("button", { class: "btn small ghost", type: "button", onclick: () => { const k = p.concentration; p.concentration = null; playCommit(`Ended Concentration on ${SPELLS[k] ? SPELLS[k].name : "spell"}`); } }, "End")) : null)
+  ));
+
+  /* Hit Point Dice */
+  const pool = R.hitDicePool(state);
+  grid.appendChild(card("Hit Point Dice",
+    h("div", { class: "hint", text: `Spend on a Short Rest: roll + Con (${R.fmtMod(mods.con)}), minimum 1 each.` }),
+    ...Object.keys(pool).sort((a, b) => b - a).map((die) => {
+      const used = p.hitDiceUsed[die] || 0;
+      return h("div", { class: "res-row" },
+        h("span", { class: "res-name", text: `d${die}` }),
+        pips(pool[die], used, (v) => { p.hitDiceUsed[die] = Math.max(0, Math.min(pool[die], v)); playCommit(); }, `d${die} Hit Dice`),
+        rollBtn("Spend", () => {
+          if (used >= pool[die]) return;
+          const r = rollDieFair(Number(die));
+          p.hitDiceUsed[die] = used + 1;
+          heal(Math.max(1, r + mods.con), `Hit Die d${die}[${r}] ${R.fmtMod(mods.con)}: healed`);
+        }));
+    })));
+
+  /* Conditions */
+  grid.appendChild(card("Conditions",
+    h("div", { class: "chip-select" },
+      R.CONDITIONS.map((c) => {
+        const on = (p.conditions || []).includes(c);
+        return h("button", { class: `chip${on ? " on" : ""}`, type: "button",
+          onclick: () => { p.conditions = on ? p.conditions.filter((x) => x !== c) : [...(p.conditions || []), c]; playCommit(`${on ? "Lost" : "Gained"} ${c}`); } }, c);
+      })),
+    h("div", { class: "res-row", style: "margin-top:10px" },
+      h("span", { class: "res-name", text: "Exhaustion" }),
+      counter(exh, 6, (v) => { p.exhaustion = v; playCommit(`Exhaustion level ${v}${v >= 6 ? " — death" : ""}`); }, "Exhaustion"),
+      exh ? h("span", { class: "hint", text: `−${2 * exh} to D20 Tests, −${5 * exh} ft. Speed` }) : null)));
+
+  /* Abilities, saves, skills */
+  const saves = R.saveProficiencies(state);
+  grid.appendChild(card("Abilities & Saves",
+    h("div", { class: "abil-grid" }, ABILS.map((a) => h("div", { class: "abil" },
+      h("div", { class: "abil-name", text: ABIL_ABBR[a] }),
+      h("div", { class: "abil-score", text: String(scores[a]) }),
+      rollBtn(`Check ${R.fmtMod(mods[a])}`, () => d20Test(`${ABIL_NAME[a]} check`, mods[a])),
+      rollBtn(`Save ${R.fmtMod(mods[a] + (saves.has(a) ? pb : 0))}`, () => d20Test(`${ABIL_NAME[a]} save`, mods[a] + (saves.has(a) ? pb : 0)), saves.has(a) ? "prof" : "")
+    )))));
+
+  const profs = R.proficientSkills(state), exps = R.expertiseSkills(state);
+  grid.appendChild(card("Skills",
+    h("div", { class: "skill-list" }, ALL_SKILL_KEYS.map((sk) => {
+      const m = R.skillModifier(state, sk);
+      return h("button", { class: `skill-btn${profs.has(sk) ? " prof" : ""}`, type: "button", onclick: () => d20Test(SKILLS[sk].name, m) },
+        h("span", { text: `${SKILLS[sk].name}${exps.has(sk) ? " ◆" : ""}` }), h("b", { class: "mono", text: R.fmtMod(m) }));
+    }))));
+
+  /* Attacks */
+  const lastCrit = playAttackCrit;
+  grid.appendChild(card("Attacks",
+    h("div", { class: "att-list" }, R.attacks(state).map((a) => {
+      const dmgExpr = a.damage.replace(/\s+[A-Z][a-z]+$/, "");
+      const type = (a.damage.match(/([A-Z][a-z]+)$/) || [])[1] || "";
+      return h("div", { class: "att-row" },
+        h("div", { class: "att-name" }, a.key === "unarmed" ? a.name : itemNameEl({ ref: `weapon:${a.key}` }),
+          a.mastery ? h("span", { class: "tag-mini", ...tooltipTrigger(() => popoverHtml({ name: a.mastery, meta: "Weapon mastery", body: WEAPON_MASTERIES[a.mastery] || "" })) }, a.mastery) : null),
+        rollBtn(`Hit ${R.fmtMod(a.toHit)}`, () => {
+          const r = d20Test(`${a.name} attack`, a.toHit);
+          lastCrit[a.key] = r.nat === 20;
+        }),
+        rollBtn(`${a.damage}`, () => {
+          const crit = !!lastCrit[a.key];
+          const r = rollExpr(dmgExpr, crit);
+          lastCrit[a.key] = false;
+          playCommit(`${a.name} damage${crit ? " (critical)" : ""}: ${r.total} ${type} (${r.detail})`);
+        }, "dmg"),
+        a.thrown ? rollBtn(`Thrown ${a.thrown}`, () => { const r = rollExpr(a.thrown.replace(/\s+[A-Z][a-z]+$/, "")); playCommit(`${a.name} thrown damage: ${r.total} (${r.detail})`); }, "dmg") : null,
+        a.versatile ? rollBtn(`2H ${a.versatile}`, () => { const r = rollExpr(a.versatile); playCommit(`${a.name} two-handed damage: ${r.total} ${type} (${r.detail})`); }, "dmg") : null,
+        (a.notes || []).length ? h("div", { class: "hint", text: a.notes.join(" · ") }) : null);
+    })),
+    h("div", { class: "hint", text: "A natural 20 on an attack makes the next damage roll for that weapon a Critical Hit (dice rolled twice)." })));
+
+  /* Spellcasting */
+  const spellCard = buildPlaySpells(p);
+  if (spellCard) grid.appendChild(spellCard);
+
+  /* Resources */
+  const res = R.playResources(state);
+  if (res.length) {
+    const rechargeText = { long: "Long Rest", short: "Short or Long Rest", shortOne: "one per Short Rest, all on Long" };
+    grid.appendChild(card("Resources", ...res.map((r) => {
+      const used = Math.min(r.max, p.resUsed[r.id] || 0);
+      const set = (v) => { p.resUsed[r.id] = Math.max(0, Math.min(r.max, v)); playCommit(); };
+      return h("div", { class: "res-block" },
+        h("div", { class: "res-row" },
+          h("span", { class: "res-name", text: r.label }),
+          r.max <= 10 && !r.unit ? pips(r.max, used, set, r.label) : counter(r.max - used, r.max, (v) => set(r.max - v), r.label)),
+        h("div", { class: "hint", text: [r.unit, `Recharges: ${rechargeText[r.recharge]}`, r.note].filter(Boolean).join(" · ") }));
+    })));
+  }
+
+  /* Dice roller */
+  const expr = h("input", { type: "text", class: "play-amt wide", placeholder: "e.g. 2d6+3", "aria-label": "Dice expression",
+    onkeydown: (e) => { if (e.key === "Enter") doRoll(); } });
+  const doRoll = () => { const v = expr.value.trim(); if (!v) return; const r = rollExpr(v); playCommit(`Rolled ${v}: ${r.total} (${r.detail})`); };
+  grid.appendChild(card("Dice",
+    h("div", { class: "dice-row" }, [4, 6, 8, 10, 12, 20, 100].map((s) => rollBtn(`d${s}`, () => { const r = rollDieFair(s); playCommit(`d${s}: ${r}`); }))),
+    h("div", { class: "hp-controls" }, expr, h("button", { class: "btn small", type: "button", onclick: doRoll }, "Roll"))));
+
+  /* Inventory: consumables with − / +, coins */
+  const inv = state.inventory || [];
+  grid.appendChild(card("Inventory",
+    inv.length ? h("ul", { class: "inv-list" }, inv.map((it) => h("li", {},
+      itemNameEl(it),
+      h("span", { class: "counter" },
+        h("button", { class: "btn small ghost", type: "button", "aria-label": `Use one ${R.itemName(it)}`, onclick: () => { it.qty = Math.max(0, (Number(it.qty) || 0) - 1); playCommit(`Used 1 ${R.itemName(it)} (${it.qty} left)`); } }, "−"),
+        h("b", { class: "mono", text: String(it.qty) }),
+        h("button", { class: "btn small ghost", type: "button", "aria-label": `Add one ${R.itemName(it)}`, onclick: () => { it.qty = (Number(it.qty) || 0) + 1; playCommit(); } }, "+"))))) :
+      h("div", { class: "hint", text: "No inventory yet — fill it in the builder's Equipment step." }),
+    h("div", { class: "coins" }, ["pp", "gp", "ep", "sp", "cp"].map((c) => h("label", {},
+      h("span", { text: c.toUpperCase() }),
+      h("input", { type: "number", min: 0, value: (state.coins || {})[c] || 0, "aria-label": `${c.toUpperCase()} coins`,
+        onchange: (e) => { state.coins = { ...(state.coins || {}), [c]: Math.max(0, Number(e.target.value) || 0) }; playCommit(); } }))))));
+
+  /* Notes + log */
+  grid.appendChild(card("Notes",
+    h("textarea", { class: "play-notes", rows: 6, "aria-label": "Session notes",
+      oninput: (e) => { p.notes = e.target.value; saveDraft(state); clearTimeout(playSaveTimer); playSaveTimer = setTimeout(() => { if (state.id) saveCharacter(state, summaryLine()); }, 600); } }, p.notes || "")));
+
+  grid.appendChild(card("Log",
+    (p.log || []).length ? h("ol", { class: "play-log" }, p.log.map((e) => h("li", {},
+      h("span", { class: "log-t", text: new Date(e.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }),
+      h("span", { text: e.text })))) : h("div", { class: "hint", text: "Rolls and changes appear here." }),
+    (p.log || []).length ? h("button", { class: "btn small ghost", type: "button", onclick: () => { p.log = []; playCommit(); } }, "Clear log") : null));
+}
+const playAttackCrit = {};
+
+/* Spell slots, Pact Magic, Mystic Arcanum, and every castable spell with a
+   Cast control that spends the right slot and tracks Concentration. */
+function buildPlaySpells(p) {
+  const work = R.spellWork(state);
+  const slots = R.spellSlots(state);
+  const pact = R.pactMagic(state);
+  const featGrants = R.featSpellGrants(state);
+  const subGrants = R.subclassSpellGrants(state);
+  if (!work.length && !featGrants.length && !subGrants.length) return null;
+
+  const castWith = (key, level, slotLevel, kind) => {
+    const spell = SPELLS[key];
+    if (kind === "slot") p.slotsUsed[slotLevel] = (p.slotsUsed[slotLevel] || 0) + 1;
+    if (kind === "pact") p.pactUsed = (p.pactUsed || 0) + 1;
+    let msg = `Cast ${spell.name}${kind === "slot" || kind === "pact" ? ` with a level ${slotLevel} ${kind === "pact" ? "Pact " : ""}slot` : kind === "free" ? " (no slot)" : ""}`;
+    if (/^Concentration/.test(spell.duration || "")) {
+      if (p.concentration && p.concentration !== key) msg += ` — ended Concentration on ${SPELLS[p.concentration] ? SPELLS[p.concentration].name : "previous spell"}`;
+      p.concentration = key;
+      msg += " — Concentrating";
+    }
+    playCommit(msg);
+  };
+
+  /* Slot choices for a spell: every regular slot level ≥ its level with a
+     slot left, plus the Pact slot if it's high enough. */
+  const slotOptions = (spellLevel) => {
+    const opts = [];
+    slots.forEach((n, i) => { const lvl = i + 1; if (lvl >= spellLevel && (p.slotsUsed[lvl] || 0) < n) opts.push({ v: `slot:${lvl}`, t: `Level ${lvl} slot` }); });
+    if (pact && pact.level >= spellLevel && (p.pactUsed || 0) < pact.slots) opts.push({ v: `pact:${pact.level}`, t: `Pact slot (L${pact.level})` });
+    return opts;
+  };
+
+  const spellRow = (key, extra) => {
+    const spell = SPELLS[key];
+    if (!spell) return null;
+    const opts = spell.level === 0 ? [] : slotOptions(spell.level);
+    const sel = h("select", { "aria-label": `Slot for ${spell.name}` }, opts.map((o) => h("option", { value: o.v }, o.t)));
+    const conc = /^Concentration/.test(spell.duration || "");
+    return h("div", { class: `spell-row${p.concentration === key ? " concentrating" : ""}` },
+      h("span", { class: "spell-name" }, spellNameEl(key), conc ? h("span", { class: "tag-mini", title: "Concentration" }, "C") : null,
+        spell.ritual ? h("span", { class: "tag-mini", title: "Ritual" }, "R") : null),
+      extra && extra.free ? rollBtn(extra.freeLabel || "Use free", () => extra.free()) : null,
+      spell.level === 0 ? rollBtn("Cast", () => castWith(key, 0, 0, "cantrip"))
+        : opts.length ? h("span", { class: "cast" }, sel, rollBtn("Cast", () => { const [kind, lvl] = sel.value.split(":"); castWith(key, spell.level, Number(lvl), kind); }))
+          : h("span", { class: "hint", text: spell.ritual ? "No slots — ritual only" : "No slots left" }));
+  };
+
+  const groupByLevel = (keys) => {
+    const m = new Map();
+    [...new Set(keys)].filter((k) => SPELLS[k]).forEach((k) => { const l = SPELLS[k].level; if (!m.has(l)) m.set(l, []); m.get(l).push(k); });
+    return [...m.keys()].sort((a, b) => a - b).map((l) => ({ level: l, keys: m.get(l).sort((a, b) => SPELLS[a].name.localeCompare(SPELLS[b].name)) }));
+  };
+
+  const body = [];
+  /* Slots */
+  if (slots.length || pact) {
+    body.push(h("div", { class: "slot-grid" },
+      slots.map((n, i) => h("div", { class: "slot-col" },
+        h("div", { class: "slot-lvl", text: `L${i + 1}` }),
+        pips(n, Math.min(n, p.slotsUsed[i + 1] || 0), (v) => { p.slotsUsed[i + 1] = Math.max(0, Math.min(n, v)); playCommit(); }, `Level ${i + 1} slots`))),
+      pact ? h("div", { class: "slot-col pact" },
+        h("div", { class: "slot-lvl", text: `Pact L${pact.level}` }),
+        pips(pact.slots, Math.min(pact.slots, p.pactUsed || 0), (v) => { p.pactUsed = Math.max(0, Math.min(pact.slots, v)); playCommit(); }, "Pact slots")) : null));
+  }
+
+  work.forEach((w) => {
+    const ability = w.caster.ability;
+    body.push(h("h4", { text: `${w.className} — DC ${R.spellSaveDC(state, ability)}, attack ${R.fmtMod(R.spellAttackBonus(state, ability))}` }));
+    const ready = [
+      ...(w.pick.cantrips || []),
+      ...(w.prepMode === "list" ? (w.pick.known || []) : (w.pick.prepared || [])),
+      ...subGrants.filter((g) => g.classIndex === w.classIndex).map((g) => g.key),
+      ...(w.subChoices || []).filter((c) => c.alwaysPrepared).flatMap((c) => c.chosen)
+    ];
+    groupByLevel(ready).forEach((g) => {
+      body.push(h("div", { class: "spell-lvl-head", text: g.level === 0 ? "Cantrips" : `Level ${g.level}` }));
+      g.keys.forEach((k) => body.push(spellRow(k)));
+    });
+    (w.arcanum || []).filter((a) => a.chosen).forEach((a) => {
+      const used = !!(p.arcanumUsed || {})[a.spellLevel];
+      body.push(h("div", { class: "spell-lvl-head", text: `Mystic Arcanum (level ${a.spellLevel})` }));
+      body.push(h("div", { class: "spell-row" },
+        h("span", { class: "spell-name" }, spellNameEl(a.chosen)),
+        used ? h("span", { class: "hint", text: "Used — back on a Long Rest" })
+          : rollBtn("Cast (1/Long Rest)", () => { p.arcanumUsed = { ...(p.arcanumUsed || {}), [a.spellLevel]: true }; castWith(a.chosen, a.spellLevel, a.spellLevel, "free"); })));
+    });
+  });
+
+  /* Feat and non-caster subclass spells: free once per Long Rest where the
+     feature says so, otherwise castable with slots. */
+  const casterIdx = new Set(work.map((w) => w.classIndex));
+  const others = [
+    ...featGrants.flatMap((g) => [...g.fixed, ...g.picks.flatMap((x) => x.chosen)].map((k) => ({ k, src: g.feat.name }))),
+    ...subGrants.filter((g) => !casterIdx.has(g.classIndex)).map((g) => ({ k: g.key, src: g.subclassName }))
+  ];
+  if (others.length) {
+    body.push(h("h4", { text: "From feats & features" }));
+    others.forEach(({ k, src }) => {
+      const id = `free:${src}:${k}`;
+      const usedFree = !!(p.resUsed || {})[id];
+      const spell = SPELLS[k];
+      body.push(spellRow(k, spell && spell.level > 0 ? {
+        freeLabel: usedFree ? "Free use spent" : "Cast free (1/LR)",
+        free: () => { if (usedFree) return; p.resUsed = { ...(p.resUsed || {}), [id]: 1 }; castWith(k, spell.level, spell.level, "free"); }
+      } : null));
+    });
+  }
+
+  return card("Spellcasting", ...body);
+}
+/* =======================================================================
    Sidebar sheet summary
    ======================================================================= */
 
 function renderSidebar() {
-  swapChildren(byId("sheet"), buildSidebar);
+  swapChildren(byId("sheet"), (host) => { if (!state.playing) buildSidebar(host); });
 }
 
 function buildSidebar(host) {
@@ -3054,6 +3590,13 @@ function openLibrary() {
             const loaded = loadCharacter(entry.id);
             if (loaded) { state = loaded; backdrop.remove(); goToStep(STEPS.length - 1); }
           } }, "Open"),
+          h("button", { class: "btn small primary", type: "button", onclick: () => {
+            const loaded = loadCharacter(entry.id);
+            if (!loaded) return;
+            state = loaded;
+            backdrop.remove();
+            startPlay();
+          } }, "Play"),
           h("button", { class: "btn small", type: "button", onclick: () => {
             const loaded = loadCharacter(entry.id);
             if (!loaded) return;
